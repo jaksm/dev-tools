@@ -119,18 +119,27 @@ export default function register(api: OpenClawPluginApi) {
   const agentsDefaults = (gwConfig?.agents as Record<string, unknown>)?.defaults as Record<string, unknown> | undefined;
   const agentWorkspaceFromConfig = (agentsDefaults?.workspace as string) ?? undefined;
 
-  api.on("session_start", async (...args: unknown[]) => {
-    const hookCtx = (args[0] ?? {}) as { sessionId?: string };
+  api.logger.info(`[dev-tools] Agent workspace: ${agentWorkspaceFromConfig ?? "NOT FOUND"}, projectRoots: ${JSON.stringify(config.projectRoots)}`);
+
+  // ── Auto-activation ──────────────────────────────────────────────────────
+  // Moved from session_start (which only fires for brand-new sessions) to a
+  // one-time lazy init that triggers on the first before_prompt_build. This
+  // ensures activation works even when sessions are resumed after a gateway
+  // restart (the common case).
+  let activated = false;
+
+  async function ensureProjectActivated(): Promise<string | undefined> {
     const agentWorkspace = agentWorkspaceFromConfig;
-    if (!agentWorkspace) {
-      api.logger.warn("[dev-tools] No agent workspace found in gateway config — skipping session_start");
-      return;
+    if (!agentWorkspace) return undefined;
+
+    // Already activated in-memory?
+    if (activated && core.hasActiveProject(agentWorkspace)) {
+      return core.getActiveProject(agentWorkspace);
     }
 
-    // Priority: 1) already active in-memory, 2) registry match, 3) config projectRoots, 4) agent workspace
+    // Priority: 1) registry match, 2) config projectRoots, 3) agent workspace fallback
     let projectDir = await core.tryAutoActivate(agentWorkspace);
     if (!projectDir) {
-      // Check config projectRoots — use the first one that exists on disk
       const configRoots = core.getConfig().projectRoots;
       if (configRoots?.length) {
         const fsModule = await import("node:fs/promises");
@@ -153,8 +162,19 @@ export default function register(api: OpenClawPluginApi) {
     }
     if (!projectDir) projectDir = core.getActiveProject(agentWorkspace);
 
-    await core.analyzeWorkspace(projectDir);
-    await core.onSessionStart(projectDir, hookCtx.sessionId ?? "unknown");
+    if (!activated && projectDir) {
+      await core.analyzeWorkspace(projectDir);
+      await core.onSessionStart(projectDir, "auto-activate");
+      activated = true;
+      api.logger.info(`[dev-tools] Project activated: ${projectDir}`);
+    }
+
+    return projectDir;
+  }
+
+  api.on("session_start", async () => {
+    // Ensure activation on new sessions too
+    await ensureProjectActivated();
   });
 
   api.on("session_end", async (...args: unknown[]) => {
@@ -162,8 +182,11 @@ export default function register(api: OpenClawPluginApi) {
     await core.onSessionEnd(hookCtx.sessionId ?? "unknown");
   });
 
-  api.on("before_prompt_build", (..._args: unknown[]) => {
+  api.on("before_prompt_build", async (..._args: unknown[]) => {
     if (!agentWorkspaceFromConfig) return undefined;
+
+    // Ensure project is activated (one-time lazy init after gateway restart)
+    await ensureProjectActivated();
 
     const projectDir = core.getActiveProject(agentWorkspaceFromConfig);
     const status = core.getWorkspaceStatus(projectDir);
