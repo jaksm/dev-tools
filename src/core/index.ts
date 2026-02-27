@@ -65,11 +65,40 @@ export class DevToolsCore {
   // Phase 5: task storage
   private taskStorages = new Map<string, TaskStorage>();
 
+  // Project mapping: agentWorkspace → projectDir
+  // Allows agents to work on projects at any path, independent of their workspace.
+  private activeProjects = new Map<string, string>();
+
   constructor(opts: { config?: Record<string, unknown>; logger: Logger }) {
     this.config = (opts.config ?? {}) as DevToolsConfig;
     this.logger = opts.logger;
     this.engine = new TreeSitterEngine();
     this.fileParser = new FileParser(this.engine);
+  }
+
+  /**
+   * Set the active project for an agent workspace.
+   * This decouples the agent's workspace (~/.openclaw/workspace-X/) from the
+   * project being worked on (e.g., ~/Projects/myapp/).
+   */
+  setActiveProject(agentWorkspace: string, projectDir: string): void {
+    this.activeProjects.set(agentWorkspace, projectDir);
+    this.logger.info(`[dev-tools] Active project set: ${projectDir} (agent workspace: ${agentWorkspace})`);
+  }
+
+  /**
+   * Get the active project directory for an agent workspace.
+   * Returns the project dir if set, otherwise falls back to the agent workspace itself.
+   */
+  getActiveProject(agentWorkspace: string): string {
+    return this.activeProjects.get(agentWorkspace) ?? agentWorkspace;
+  }
+
+  /**
+   * Check if an explicit project has been set for this agent workspace.
+   */
+  hasActiveProject(agentWorkspace: string): boolean {
+    return this.activeProjects.has(agentWorkspace);
   }
 
   /**

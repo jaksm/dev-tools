@@ -8,7 +8,6 @@
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { DevToolsCore } from "./core/index.js";
-import { createStorageManager } from "./core/storage.js";
 import { fileRead, type FileReadParams } from "./tools/file-read.js";
 import { fileWrite, type FileWriteParams } from "./tools/file-write.js";
 import { fileEdit, type FileEditParams } from "./tools/file-edit.js";
@@ -101,20 +100,15 @@ export default function register(api: OpenClawPluginApi) {
 
   // Register tools via factory — runs per session
   api.registerTool((ctx: OpenClawPluginToolContext) => {
-    const workspaceDir = ctx.workspaceDir;
-    if (!workspaceDir) {
+    const agentWorkspace = ctx.workspaceDir;
+    if (!agentWorkspace) {
       api.logger.warn("[dev-tools] No workspaceDir available — skipping tool registration");
       return null;
     }
 
-    // We need workspace analysis to build the tool context, but the factory
-    // must be synchronous (returns tools immediately). We do a synchronous
-    // initial setup and let async analysis happen on session_start.
-    // For now, create tools with a lazy workspace resolution.
-    const storage = createStorageManager(workspaceDir);
-
-    // Return all tools (foundation + intelligence)
-    const tools = buildTools(core, workspaceDir, storage.storageDir);
+    // Tools use a dynamic project root that can be changed via `dev-tools init <path>`.
+    // By default, falls back to the agent workspace for backward compatibility.
+    const tools = buildTools(core, agentWorkspace);
     return tools;
   });
 
@@ -122,11 +116,13 @@ export default function register(api: OpenClawPluginApi) {
 
   api.on("session_start", async (...args: unknown[]) => {
     const hookCtx = (args[1] ?? {}) as { workspaceDir?: string; sessionId?: string };
-    const workspaceDir = hookCtx.workspaceDir;
-    if (!workspaceDir) return;
+    const agentWorkspace = hookCtx.workspaceDir;
+    if (!agentWorkspace) return;
 
-    await core.analyzeWorkspace(workspaceDir);
-    await core.onSessionStart(workspaceDir, hookCtx.sessionId ?? "unknown");
+    // Resolve the active project (may be different from agent workspace)
+    const projectDir = core.getActiveProject(agentWorkspace);
+    await core.analyzeWorkspace(projectDir);
+    await core.onSessionStart(projectDir, hookCtx.sessionId ?? "unknown");
   });
 
   api.on("session_end", async (...args: unknown[]) => {
@@ -136,7 +132,11 @@ export default function register(api: OpenClawPluginApi) {
 
   api.on("before_prompt_build", (...args: unknown[]) => {
     const hookCtx = (args[1] ?? {}) as { workspaceDir?: string };
-    const status = core.getWorkspaceStatus(hookCtx.workspaceDir);
+    const agentWorkspace = hookCtx.workspaceDir;
+    if (!agentWorkspace) return undefined;
+
+    const projectDir = core.getActiveProject(agentWorkspace);
+    const status = core.getWorkspaceStatus(projectDir);
     if (status) {
       return { prependContext: status };
     }
@@ -148,7 +148,7 @@ export default function register(api: OpenClawPluginApi) {
   if (api.registerCommand) {
     api.registerCommand({
       name: "dev-tools",
-      description: "Dev-tools status, setup, and management. Usage: /dev-tools [setup|init|status]",
+      description: "Dev-tools status, setup, and management. Usage: /dev-tools [setup|init <path>|status]",
       handler: async (ctx) => {
         const subcommand = ctx.args[0] ?? "status";
         const config = (api.pluginConfig ?? {}) as import("./core/types.js").DevToolsConfig;
@@ -158,20 +158,44 @@ export default function register(api: OpenClawPluginApi) {
         }
 
         if (subcommand === "init") {
-          if (!ctx.workspaceDir) {
-            return { success: false, error: "No workspace directory available. Run from a project directory." };
+          // Accept a project path argument: /dev-tools init /path/to/project
+          // Falls back to agent workspace if no path given (backward compatible)
+          const targetPath = ctx.args[1]
+            ? path.resolve(ctx.args[1])
+            : ctx.workspaceDir;
+
+          if (!targetPath) {
+            return { success: false, error: "No path specified. Usage: /dev-tools init <project-path>" };
           }
-          return handleInit(config, api.logger, ctx.workspaceDir);
+
+          const result = await handleInit(config, api.logger, targetPath);
+
+          // Set as active project for this agent workspace
+          if (result.success && ctx.workspaceDir) {
+            core.setActiveProject(ctx.workspaceDir, targetPath);
+            // Trigger workspace analysis so tools have full context
+            await core.analyzeWorkspace(targetPath);
+            await core.onSessionStart(targetPath, "init");
+          }
+
+          return {
+            ...result,
+            activeProject: targetPath,
+            agentWorkspace: ctx.workspaceDir,
+          };
         }
 
         // Default: status
         if (!ctx.workspaceDir) {
           return { status: "no workspace", message: "No workspace directory available." };
         }
+        const projectDir = core.getActiveProject(ctx.workspaceDir);
         return {
           status: "active",
-          workspace: ctx.workspaceDir,
-          workspaceStatus: core.getWorkspaceStatus(ctx.workspaceDir),
+          agentWorkspace: ctx.workspaceDir,
+          activeProject: projectDir,
+          projectIsExplicit: core.hasActiveProject(ctx.workspaceDir),
+          workspaceStatus: core.getWorkspaceStatus(projectDir),
         };
       },
     });
@@ -189,13 +213,18 @@ export default function register(api: OpenClawPluginApi) {
     ];
     if (!ourTools.includes(event.toolName)) return;
 
+    // Log against the active project dir, not agent workspace
+    const logDir = hookCtx.workspaceDir
+      ? core.getActiveProject(hookCtx.workspaceDir)
+      : undefined;
+
     core.logToolCall({
       toolName: event.toolName,
       params: event.params,
       result: event.result,
       error: event.error,
       durationMs: event.durationMs,
-    }, hookCtx.workspaceDir);
+    }, logDir);
   });
 }
 
@@ -203,23 +232,29 @@ export default function register(api: OpenClawPluginApi) {
 
 function buildTools(
   core: DevToolsCore,
-  workspaceDir: string,
-  _storageDir: string,
+  agentWorkspace: string,
 ): AnyAgentTool[] {
+  // Dynamic project root resolver — returns the active project dir (or agent workspace as fallback).
+  // This is called at tool execution time, so it picks up changes from `dev-tools init`.
+  function getProjectDir(): string {
+    return core.getActiveProject(agentWorkspace);
+  }
+
   // Lazy workspace resolver — tools get the workspace at call time
   async function getToolContext(): Promise<import("./core/types.js").ToolContext> {
-    let workspace = await core.analyzeWorkspace(workspaceDir);
+    const projectDir = getProjectDir();
+    let workspace = await core.analyzeWorkspace(projectDir);
     if (!workspace) {
       // Fallback minimal workspace
       workspace = {
-        root: workspaceDir,
+        root: projectDir,
         hasGit: false,
         languages: [],
         testRunners: [],
         gitignoreFilter: () => false,
       };
     }
-    return core.createToolContext(workspaceDir, workspace);
+    return core.createToolContext(projectDir, workspace);
   }
 
   return [
@@ -291,7 +326,7 @@ function buildTools(
       }),
       async (params) => {
         const ctx = await getToolContext();
-        const lspManager = core.getLspManager(workspaceDir);
+        const lspManager = core.getLspManager(getProjectDir());
         return fileEdit(params as unknown as FileEditParams, ctx, { lspManager });
       },
     ),
@@ -319,7 +354,7 @@ function buildTools(
         const ctx = await getToolContext();
         const result = await shell(params as unknown as ShellParams, ctx);
         // Notify LSP manager that a shell command ran (invalidates prereq cache)
-        core.notifyShellCommand(workspaceDir);
+        core.notifyShellCommand(getProjectDir());
         return result;
       },
     ),
@@ -413,7 +448,7 @@ function buildTools(
       }),
       async (params) => {
         const ctx = await getToolContext();
-        const symbolIndex = core.getSymbolIndex(workspaceDir);
+        const symbolIndex = core.getSymbolIndex(getProjectDir());
         return codeOutline(params as unknown as CodeOutlineParams, ctx, symbolIndex);
       },
     ),
@@ -441,7 +476,7 @@ function buildTools(
       }),
       async (params) => {
         const ctx = await getToolContext();
-        const symbolIndex = core.getSymbolIndex(workspaceDir);
+        const symbolIndex = core.getSymbolIndex(getProjectDir());
         return codeRead(params as unknown as CodeReadParams, ctx, symbolIndex);
       },
     ),
@@ -475,8 +510,8 @@ function buildTools(
       }),
       async (params) => {
         const ctx = await getToolContext();
-        const symbolIndex = core.getSymbolIndex(workspaceDir);
-        const embeddingIndexer = core.getEmbeddingIndexer(workspaceDir);
+        const symbolIndex = core.getSymbolIndex(getProjectDir());
+        const embeddingIndexer = core.getEmbeddingIndexer(getProjectDir());
         return codeSearch(params as unknown as CodeSearchParams, ctx, symbolIndex, embeddingIndexer);
       },
     ),
@@ -502,9 +537,9 @@ function buildTools(
       }),
       async (params) => {
         const ctx = await getToolContext();
-        const symbolIndex = core.getSymbolIndex(workspaceDir);
-        const lspManager = core.getLspManager(workspaceDir);
-        const lspResolver = core.getLspResolver(workspaceDir);
+        const symbolIndex = core.getSymbolIndex(getProjectDir());
+        const lspManager = core.getLspManager(getProjectDir());
+        const lspResolver = core.getLspResolver(getProjectDir());
         return codeInspect(params as unknown as CodeInspectParams, ctx, symbolIndex, lspManager, lspResolver);
       },
     ),
@@ -542,9 +577,9 @@ function buildTools(
       }),
       async (params) => {
         const ctx = await getToolContext();
-        const symbolIndex = core.getSymbolIndex(workspaceDir);
-        const lspManager = core.getLspManager(workspaceDir);
-        const embeddingIndexer = core.getEmbeddingIndexer(workspaceDir);
+        const symbolIndex = core.getSymbolIndex(getProjectDir());
+        const lspManager = core.getLspManager(getProjectDir());
+        const embeddingIndexer = core.getEmbeddingIndexer(getProjectDir());
         return codeDiagnose(params as unknown as CodeDiagnoseParams, ctx, symbolIndex, lspManager, embeddingIndexer);
       },
     ),
@@ -577,9 +612,9 @@ function buildTools(
       }),
       async (params) => {
         const ctx = await getToolContext();
-        const symbolIndex = core.getSymbolIndex(workspaceDir);
-        const lspManager = core.getLspManager(workspaceDir);
-        const lspResolver = core.getLspResolver(workspaceDir);
+        const symbolIndex = core.getSymbolIndex(getProjectDir());
+        const lspManager = core.getLspManager(getProjectDir());
+        const lspResolver = core.getLspResolver(getProjectDir());
         return codeRefactor(params as unknown as CodeRefactorParams, ctx, symbolIndex, lspManager, lspResolver);
       },
     ),
@@ -656,7 +691,7 @@ function buildTools(
         ], { description: "For 'export': 'summary' = compact ~500 tokens (default), 'full' = complete plan JSON" })),
       }),
       async (params) => {
-        const taskStorage = core.getTaskStorage(workspaceDir);
+        const taskStorage = core.getTaskStorage(getProjectDir());
         return taskTool(params as unknown as TaskParams, taskStorage);
       },
     ),
@@ -692,7 +727,7 @@ function buildTools(
         path: Type.Optional(Type.String({ description: "For 'log': show commits that modified this path" })),
       }),
       async (params) => {
-        return gitTool(params as unknown as GitParams, workspaceDir);
+        return gitTool(params as unknown as GitParams, getProjectDir());
       },
     ),
 
@@ -726,11 +761,11 @@ function buildTools(
         // Use the first detected runner (or match by file if multiple)
         let runner = runners[0];
         if (params.file && runners.length > 1) {
-          const filePath = path.resolve(workspaceDir, params.file as string);
+          const filePath = path.resolve(getProjectDir(), params.file as string);
           const matched = runners.find(r => filePath.startsWith(r.root));
           if (matched) runner = matched;
         }
-        return testTool(params as unknown as TestParams, runner, workspaceDir);
+        return testTool(params as unknown as TestParams, runner, getProjectDir());
       },
     ),
   ];
