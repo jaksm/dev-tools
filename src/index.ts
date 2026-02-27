@@ -114,10 +114,18 @@ export default function register(api: OpenClawPluginApi) {
 
   // ── Lifecycle Hooks ───────────────────────────────────────────────────────
 
+  // Resolve agent workspace from gateway config — lifecycle hooks don't receive workspaceDir
+  const gwConfig = (api as unknown as { config?: Record<string, unknown> }).config;
+  const agentsDefaults = (gwConfig?.agents as Record<string, unknown>)?.defaults as Record<string, unknown> | undefined;
+  const agentWorkspaceFromConfig = (agentsDefaults?.workspace as string) ?? undefined;
+
   api.on("session_start", async (...args: unknown[]) => {
-    const hookCtx = (args[1] ?? {}) as { workspaceDir?: string; sessionId?: string };
-    const agentWorkspace = hookCtx.workspaceDir;
-    if (!agentWorkspace) return;
+    const hookCtx = (args[0] ?? {}) as { sessionId?: string };
+    const agentWorkspace = agentWorkspaceFromConfig;
+    if (!agentWorkspace) {
+      api.logger.warn("[dev-tools] No agent workspace found in gateway config — skipping session_start");
+      return;
+    }
 
     // Priority: 1) already active in-memory, 2) registry match, 3) config projectRoots, 4) agent workspace
     let projectDir = await core.tryAutoActivate(agentWorkspace);
@@ -150,16 +158,14 @@ export default function register(api: OpenClawPluginApi) {
   });
 
   api.on("session_end", async (...args: unknown[]) => {
-    const hookCtx = (args[1] ?? {}) as { sessionId?: string };
+    const hookCtx = (args[0] ?? {}) as { sessionId?: string };
     await core.onSessionEnd(hookCtx.sessionId ?? "unknown");
   });
 
-  api.on("before_prompt_build", (...args: unknown[]) => {
-    const hookCtx = (args[1] ?? {}) as { workspaceDir?: string };
-    const agentWorkspace = hookCtx.workspaceDir;
-    if (!agentWorkspace) return undefined;
+  api.on("before_prompt_build", (..._args: unknown[]) => {
+    if (!agentWorkspaceFromConfig) return undefined;
 
-    const projectDir = core.getActiveProject(agentWorkspace);
+    const projectDir = core.getActiveProject(agentWorkspaceFromConfig);
     const status = core.getWorkspaceStatus(projectDir);
     if (status) {
       return { prependContext: status };
