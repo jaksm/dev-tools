@@ -1,0 +1,36 @@
+{
+  "name": "@openclaw/dev-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IDE-grade coding tools for AI agents — foundation tools, code intelligence, workflow automation.",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@sinclair/typebox": "^0.34.30",
+    "chokidar": "^5.0.0",
+    "fast-glob": "^3.3.3",
+    "hnswlib-node": "^3.0.0",
+    "ignore": "^7.0.3",
+    "tree-sitter-wasms": "^0.1.13",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "web-tree-sitter": "^0.20.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  }
+}

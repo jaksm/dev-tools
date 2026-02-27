@@ -1,0 +1,25 @@
+{
+  "id": "dev-tools",
+  "name": "Dev Tools",
+  "description": "IDE-grade coding tools for AI agents — file operations, shell, code intelligence, task planning, git, and test runners.",
+  "version": "0.2.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "shell": {
+        "type": "object",
+        "properties": {
+          "defaultTimeout": { "type": "number", "default": 120000 },
+          "blocklist": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "tokenBudget": {
+        "type": "object",
+        "properties": {
+          "maxResponseTokens": { "type": "number", "default": 4000 }
+        }
+      }
+    }
+  }
+}
