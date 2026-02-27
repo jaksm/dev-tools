@@ -79,7 +79,8 @@ describe("task — deep hierarchies", () => {
     // Status reflects deep progress
     const statusResult = await task({ action: "status", planId }, storage);
     expect(statusResult.success).toBe(true);
-    expect((statusResult.data as any).progress).toBe("1/5");
+    // Auto-promotion: completing the deepest leaf promotes all single-child ancestors
+    expect((statusResult.data as any).progress).toBe("5/5");
   });
 
   it("completing parent with 3-level deep nested subtasks requires all done", async () => {

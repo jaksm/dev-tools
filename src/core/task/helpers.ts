@@ -206,16 +206,50 @@ export function allSubtasksCompleted(task: Task): boolean {
 /**
  * Check if a plan has any non-terminal tasks.
  */
-export function isPlanComplete(plan: Plan): boolean {
-  function allTerminal(tasks: Task[]): boolean {
-    return tasks.every(t => {
-      const terminal = t.status === "completed" || t.status === "cancelled" || t.status === "failed";
-      if (!terminal) return false;
-      if (t.subtasks) return allTerminal(t.subtasks);
-      return true;
-    });
+/**
+ * Walk the task tree and auto-promote parent tasks whose subtasks are all terminal.
+ * Mutates tasks in-place, records changes in history.
+ */
+export function autoPromoteParents(
+  tasks: Task[],
+  now: string,
+  history: Array<{ time: string; event: string }>,
+  changes: string[],
+): void {
+  for (const task of tasks) {
+    if (!task.subtasks || task.subtasks.length === 0) continue;
+
+    // Recurse first (bottom-up promotion)
+    autoPromoteParents(task.subtasks, now, history, changes);
+
+    // Check if all subtasks are terminal
+    const allTerminal = task.subtasks.every(
+      sub => sub.status === "completed" || sub.status === "cancelled" || sub.status === "failed",
+    );
+
+    if (allTerminal && task.status !== "completed" && task.status !== "cancelled" && task.status !== "failed") {
+      // Promote: if any child failed, parent fails; otherwise completed
+      const anyFailed = task.subtasks.some(sub => sub.status === "failed");
+      const newStatus = anyFailed ? "failed" : "completed";
+      const oldStatus = task.status;
+      task.status = newStatus;
+      const msg = `${task.id} status: ${oldStatus} → ${newStatus} (auto-promoted: all subtasks terminal)`;
+      changes.push(msg);
+      history.push({ time: now, event: msg });
+    }
   }
-  return allTerminal(plan.tasks);
+}
+
+export function isPlanComplete(plan: Plan): boolean {
+  function isTaskTerminal(t: Task): boolean {
+    // If task has subtasks, derive status from children (parent may lag behind)
+    if (t.subtasks && t.subtasks.length > 0) {
+      return t.subtasks.every(sub => isTaskTerminal(sub));
+    }
+    // Leaf task: check explicit status
+    return t.status === "completed" || t.status === "cancelled" || t.status === "failed";
+  }
+  return plan.tasks.every(t => isTaskTerminal(t));
 }
 
 /**

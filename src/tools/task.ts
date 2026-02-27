@@ -31,6 +31,7 @@ import {
   allSubtasksCompleted,
   isPlanComplete,
   mergeContext,
+  autoPromoteParents,
 } from "../core/task/helpers.js";
 
 // ── Params type (used by OC adapter) ────────────────────────────────────────
@@ -243,6 +244,11 @@ async function handleUpdate(
   if (params.status === "completed") {
     // Check if parent is a checkpoint task and all its subtasks are done
     checkpointReady = checkForCheckpointTrigger(plan, params.id);
+  }
+
+  // Auto-promote parent tasks when all subtasks are terminal
+  if (params.status === "completed" || params.status === "cancelled" || params.status === "failed") {
+    autoPromoteParents(plan.tasks, now, plan.history, changes);
   }
 
   // Check if entire plan is complete
