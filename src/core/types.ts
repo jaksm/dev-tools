@@ -40,6 +40,8 @@ export interface DevToolsConfig {
     maxResponseTokens?: number;
   };
   roots?: LanguageRootConfig[];
+  /** Project roots to auto-initialize on session start. First match wins. */
+  projectRoots?: string[];
 }
 
 export interface LspServerConfig {

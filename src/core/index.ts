@@ -84,6 +84,11 @@ export class DevToolsCore {
     this.fileParser = new FileParser(this.engine);
   }
 
+  /** Get the current config. */
+  getConfig(): DevToolsConfig {
+    return this.config;
+  }
+
   /**
    * Set the active project for an agent workspace.
    * This decouples the agent's workspace (~/.openclaw/workspace-X/) from the

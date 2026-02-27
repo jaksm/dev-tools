@@ -119,9 +119,32 @@ export default function register(api: OpenClawPluginApi) {
     const agentWorkspace = hookCtx.workspaceDir;
     if (!agentWorkspace) return;
 
-    // Try auto-activate from registry before falling back to agent workspace
-    await core.tryAutoActivate(agentWorkspace);
-    const projectDir = core.getActiveProject(agentWorkspace);
+    // Priority: 1) already active in-memory, 2) registry match, 3) config projectRoots, 4) agent workspace
+    let projectDir = await core.tryAutoActivate(agentWorkspace);
+    if (!projectDir) {
+      // Check config projectRoots — use the first one that exists on disk
+      const configRoots = core.getConfig().projectRoots;
+      if (configRoots?.length) {
+        const fsModule = await import("node:fs/promises");
+        const pathModule = await import("node:path");
+        for (const root of configRoots) {
+          const resolved = root.startsWith("~")
+            ? pathModule.default.join(process.env.HOME || "", root.slice(1))
+            : pathModule.default.resolve(root);
+          try {
+            await fsModule.default.access(resolved);
+            core.setActiveProject(agentWorkspace, resolved);
+            api.logger.info(`[dev-tools] Auto-activated project from config: ${resolved}`);
+            projectDir = resolved;
+            break;
+          } catch {
+            // Path doesn't exist — try next
+          }
+        }
+      }
+    }
+    if (!projectDir) projectDir = core.getActiveProject(agentWorkspace);
+
     await core.analyzeWorkspace(projectDir);
     await core.onSessionStart(projectDir, hookCtx.sessionId ?? "unknown");
   });
