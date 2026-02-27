@@ -146,13 +146,15 @@ describe("HnswIndex", () => {
   });
 
   it("scope filter restricts results", () => {
-    index.insert("id1", makeVector([1, 0, 0, 0]), makeSymbol("a", "/p/src/auth/login.ts"));
-    index.insert("id2", makeVector([0.9, 0.1, 0, 0]), makeSymbol("b", "/p/src/user/profile.ts"));
+    // Paths are relative (as produced by path.relative in production)
+    index.insert("id1", makeVector([1, 0, 0, 0]), makeSymbol("a", "src/auth/login.ts"));
+    index.insert("id2", makeVector([0.9, 0.1, 0, 0]), makeSymbol("b", "src/user/profile.ts"));
 
     const all = index.search(makeVector([1, 0, 0, 0]), 10);
     expect(all.length).toBe(2);
 
-    const scoped = index.search(makeVector([1, 0, 0, 0]), 10, "auth");
+    // Scope is a relative path prefix
+    const scoped = index.search(makeVector([1, 0, 0, 0]), 10, "src/auth");
     expect(scoped.length).toBe(1);
     expect(scoped[0].symbol.qualifiedName).toBe("a");
   });

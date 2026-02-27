@@ -615,7 +615,9 @@ function buildTools(
           Type.Literal("health"),
           Type.Literal("lsp_status"),
           Type.Literal("reload"),
-        ], { description: "'diagnostics' = errors/warnings (default), 'health' = engine status, 'lsp_status' = per-server debug info, 'reload' = restart LSP" })),
+          Type.Literal("report_issue"),
+          Type.Literal("error_log"),
+        ], { description: "'diagnostics' = errors/warnings (default), 'health' = engine status, 'lsp_status' = per-server debug info, 'reload' = restart LSP, 'report_issue' = log a tool anomaly, 'error_log' = view unresolved errors" })),
         file: Type.Optional(Type.String({ description: "Show diagnostics only for this file (relative to workspace)" })),
         directory: Type.Optional(Type.String({ description: "Show diagnostics only for files in this directory" })),
         root: Type.Optional(Type.String({ description: "Filter by monorepo language root (e.g., 'packages/backend')" })),
@@ -627,6 +629,8 @@ function buildTools(
           Type.Literal("all"),
         ], { description: "Minimum severity to show (default: 'warning' = errors + warnings)" })),
         limit: Type.Optional(Type.Number({ description: "Max diagnostics to return (default: 50)" })),
+        tool: Type.Optional(Type.String({ description: "For report_issue: the tool name that exhibited the problem" })),
+        issue: Type.Optional(Type.String({ description: "For report_issue: description of what went wrong or seemed off" })),
       }),
       async (params) => {
         const ctx = await getToolContext();

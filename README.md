@@ -1,6 +1,6 @@
 # dev-tools
 
-A complete coding toolbox for OpenClaw agents. 13 native tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing.
+A complete coding toolbox for OpenClaw agents. 16 native tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing.
 
 **Replaces the need for spawning external coding agents** (Claude Code, Codex, etc.) — agents get structured tool calls with JSON output instead of wrestling with TUI processes.
 
@@ -100,21 +100,26 @@ In `openclaw.json`:
 ```json
 {
   "plugins": {
-    "dev-tools": {
-      "search": {
-        "provider": "local",
-        "model": "Xenova/all-MiniLM-L6-v2"
-      },
-      "lsp": {
-        "maxRestartAttempts": 3,
-        "debug": false
-      },
-      "shell": {
-        "defaultTimeout": 120000,
-        "jail": true
-      },
-      "tokenBudget": {
-        "maxResponseTokens": 4000
+    "entries": {
+      "dev-tools": {
+        "enabled": true,
+        "config": {
+          "projectRoots": ["~/Projects/myapp"],
+          "search": {
+            "provider": "local",
+            "model": "Xenova/all-MiniLM-L6-v2"
+          },
+          "lsp": {
+            "maxRestartAttempts": 3,
+            "debug": false
+          },
+          "shell": {
+            "defaultTimeout": 120000
+          },
+          "tokenBudget": {
+            "maxResponseTokens": 4000
+          }
+        }
       }
     }
   }
@@ -143,8 +148,7 @@ Tree-sitter provides symbol extraction and code intelligence for all listed lang
 ## Development
 
 ```bash
-# Run tests (891+ tests)
-cd ~/.openclaw/extensions/dev-tools
+# Run tests (907+ tests across 57 files)
 npx vitest run
 
 # Type check
@@ -153,6 +157,17 @@ npx tsc --noEmit
 # Watch mode
 npx vitest
 ```
+
+## Documentation
+
+Detailed docs in `docs/`:
+
+- [Architecture](docs/architecture.md) — plugin structure, storage layout, engine overview
+- [Tools Reference](docs/tools.md) — all 16 tools with params, behavior, output
+- [Configuration](docs/configuration.md) — config schema, env vars, defaults
+- [Engines](docs/engines.md) — tree-sitter, symbol index, HNSW, LSP
+- [Lifecycle](docs/lifecycle.md) — session hooks, auto-activation, project registry
+- [Languages](docs/languages.md) — supported languages, detection, LSP servers
 
 ## License
 

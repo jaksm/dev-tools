@@ -1,6 +1,6 @@
 ---
 name: dev-tools
-description: "Complete coding toolbox — 13 tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing. Use when: writing code, exploring codebases, debugging, refactoring, running tests, or planning multi-step development work. Replaces the need for spawning external coding agents. NOT for: non-code tasks, browser automation, or deployment operations."
+description: "Complete coding toolbox — 16 tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing. Use when: writing code, exploring codebases, debugging, refactoring, running tests, or planning multi-step development work. Replaces the need for spawning external coding agents. NOT for: non-code tasks, browser automation, or deployment operations."
 metadata:
   {
     "openclaw":
@@ -23,7 +23,7 @@ metadata:
 
 # Dev-Tools — Coding Toolbox
 
-13 native tools for code intelligence, editing, search, diagnostics, and workflow management. Everything a dev agent needs in one plugin — no TUI coding agents, no PTY, no overhead.
+16 native tools for code intelligence, editing, search, diagnostics, and workflow management. Everything a dev agent needs in one plugin — no TUI coding agents, no PTY, no overhead.
 
 ## Quick Start
 
@@ -215,5 +215,5 @@ Settings can also be set via environment variables:
 - Token budget truncation saves full output to disk — use `file_read` or `grep` to access truncated content
 - LSP servers lazy-boot on first use — no startup cost until needed
 - Symbol index updates incrementally via file watcher — always current
-- After gateway restart, a full re-index runs automatically (incremental only works within a session)
+- After gateway restart, incremental re-index runs using mtime manifest — only changed files are re-parsed
 - LSP servers auto-detect binary installation mid-session — install via `shell`, then use `code_inspect`/`code_diagnose` immediately

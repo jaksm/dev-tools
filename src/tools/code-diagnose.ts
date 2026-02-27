@@ -6,6 +6,8 @@
  * - "health": engine statuses (tree-sitter, embeddings, LSP per language)
  * - "lsp_status": per-server debug info (PID, uptime, restart count, etc.)
  * - "reload": full engine reinitialization
+ * - "report_issue": agent-reported tool anomaly → appended to error investigation log
+ * - "error_log": read unresolved error log entries (for reflection sessions)
  */
 
 import * as path from "node:path";
@@ -14,11 +16,12 @@ import type { LspManager } from "../core/lsp/manager.js";
 import type { SeverityFilter, DiagnosticsSummary } from "../core/lsp/diagnostics.js";
 import type { SymbolIndex } from "../core/index/symbol-index.js";
 import type { EmbeddingIndexer } from "../core/search/indexer.js";
+import { appendErrorLog, errorLogSummary } from "../core/error-log.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface CodeDiagnoseParams {
-  action?: "diagnostics" | "health" | "lsp_status" | "reload";
+  action?: "diagnostics" | "health" | "lsp_status" | "reload" | "report_issue" | "error_log";
   /** For diagnostics: filter by file path (relative to workspace) */
   file?: string;
   /** For diagnostics: filter by directory */
@@ -29,6 +32,10 @@ export interface CodeDiagnoseParams {
   severity?: SeverityFilter;
   /** For diagnostics: max results (default: 50) */
   limit?: number;
+  /** For report_issue: the tool name that exhibited the problem */
+  tool?: string;
+  /** For report_issue: description of what went wrong or seemed off */
+  issue?: string;
 }
 
 // ── Result types per action ─────────────────────────────────────────────────
@@ -105,7 +112,19 @@ export interface ReloadResult {
   restarted: string[];
 }
 
-type CodeDiagnoseResult = DiagnosticsResult | HealthResult | LspStatusResult | ReloadResult;
+export interface ReportIssueResult {
+  action: "report_issue";
+  message: string;
+}
+
+export interface ErrorLogResult {
+  action: "error_log";
+  summary: string;
+  total: number;
+  unresolved: number;
+}
+
+type CodeDiagnoseResult = DiagnosticsResult | HealthResult | LspStatusResult | ReloadResult | ReportIssueResult | ErrorLogResult;
 
 // ── Tool Implementation ─────────────────────────────────────────────────────
 
@@ -127,10 +146,14 @@ export async function codeDiagnose(
       return handleLspStatus(lspManager);
     case "reload":
       return handleReload(lspManager);
+    case "report_issue":
+      return handleReportIssue(params, ctx);
+    case "error_log":
+      return handleErrorLog(ctx);
     default:
       return {
         success: false,
-        error: `Unknown action: ${action}. Valid actions: diagnostics, health, lsp_status, reload`,
+        error: `Unknown action: ${action}. Valid actions: diagnostics, health, lsp_status, reload, report_issue, error_log`,
       };
   }
 }
@@ -424,6 +447,58 @@ async function handleReload(
       restarted: activeServers,
     },
     summary: `Reloaded ${activeServers.length} server${activeServers.length !== 1 ? "s" : ""}`,
+  };
+}
+
+// ── Action: report_issue ─────────────────────────────────────────────────────
+
+async function handleReportIssue(
+  params: CodeDiagnoseParams,
+  ctx: ToolContext,
+): Promise<ToolResult<ReportIssueResult>> {
+  if (!params.tool || !params.issue) {
+    return {
+      success: false,
+      error: "report_issue requires 'tool' (tool name) and 'issue' (description of the problem).",
+    };
+  }
+
+  await appendErrorLog(ctx.storageDir, {
+    timestamp: new Date().toISOString(),
+    tool: params.tool,
+    error: params.issue,
+    source: "agent",
+    status: "unresolved",
+  });
+
+  return {
+    success: true,
+    data: {
+      action: "report_issue",
+      message: `Logged issue for \`${params.tool}\`: ${params.issue.slice(0, 100)}`,
+    },
+    summary: `Issue logged for ${params.tool}`,
+  };
+}
+
+// ── Action: error_log ────────────────────────────────────────────────────────
+
+async function handleErrorLog(
+  ctx: ToolContext,
+): Promise<ToolResult<ErrorLogResult>> {
+  const summary = await errorLogSummary(ctx.storageDir);
+  const all = await (await import("../core/error-log.js")).readErrorLog(ctx.storageDir);
+  const unresolved = all.filter((e: { status: string }) => e.status === "unresolved").length;
+
+  return {
+    success: true,
+    data: {
+      action: "error_log",
+      summary,
+      total: all.length,
+      unresolved,
+    },
+    summary: `Error log: ${all.length} total, ${unresolved} unresolved`,
   };
 }
 

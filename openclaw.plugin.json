@@ -1,12 +1,52 @@
 {
   "id": "dev-tools",
   "name": "Dev Tools",
-  "description": "IDE-grade coding tools for AI agents — file operations, shell, code intelligence, task planning, git, and test runners.",
-  "version": "0.2.0",
+  "description": "IDE-grade coding tools for AI agents — 16 tools for file operations, shell, code intelligence, semantic search, LSP diagnostics, task planning, git, and test runners.",
+  "version": "0.3.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": true,
     "properties": {
+      "projectRoots": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Project directories to auto-activate. First valid path wins."
+      },
+      "search": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string", "enum": ["local", "api"], "default": "local" },
+          "model": { "type": "string", "default": "Xenova/all-MiniLM-L6-v2" },
+          "reindexDebounceMs": { "type": "number", "default": 2000 }
+        }
+      },
+      "lsp": {
+        "type": "object",
+        "properties": {
+          "maxRestartAttempts": { "type": "number", "default": 3 },
+          "healthCheckIntervalMs": { "type": "number", "default": 30000 },
+          "debug": { "type": "boolean", "default": false },
+          "servers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "command": { "type": "string" },
+                "args": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      },
+      "index": {
+        "type": "object",
+        "properties": {
+          "maxFileSize": { "type": "string", "default": "256KB" },
+          "include": { "type": "array", "items": { "type": "string" } },
+          "exclude": { "type": "array", "items": { "type": "string" } }
+        }
+      },
       "shell": {
         "type": "object",
         "properties": {
@@ -19,6 +59,18 @@
         "properties": {
           "maxResponseTokens": { "type": "number", "default": 4000 }
         }
+      },
+      "roots": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["path", "language"],
+          "properties": {
+            "path": { "type": "string" },
+            "language": { "type": "string" }
+          }
+        },
+        "description": "Explicit language root declarations for monorepos."
       }
     }
   }

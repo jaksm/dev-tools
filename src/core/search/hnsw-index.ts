@@ -217,7 +217,7 @@ export class HnswIndex {
       if (!meta) continue; // Deleted entry
 
       // Scope filter — only include symbols within the specified directory
-      if (scope && !meta.symbol.filePath.includes(scope)) continue;
+      if (scope && !meta.symbol.filePath.startsWith(scope)) continue;
 
       results.push({
         label,

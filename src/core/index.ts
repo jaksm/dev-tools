@@ -15,6 +15,7 @@ import { createGitignoreFilter } from "./gitignore.js";
 import { detectLanguages } from "./languages.js";
 import { detectTestRunners } from "./test-detection.js";
 import { createToolCallLogger, summarizeInput, summarizeOutput } from "./logging.js";
+import { appendErrorLog, shouldLogError } from "./error-log.js";
 import { cleanToolOutput } from "./token-budget.js";
 import type { ToolCallLogger } from "./logging.js";
 import fs from "node:fs/promises";
@@ -556,6 +557,18 @@ export class DevToolsCore {
       durationMs: event.durationMs ?? 0,
       status: event.error ? "error" : "ok",
     });
+
+    // Auto-append tool errors to investigation log (deduplicated)
+    if (event.error && shouldLogError(event.toolName, event.error)) {
+      void appendErrorLog(storage.storageDir, {
+        timestamp: new Date().toISOString(),
+        tool: event.toolName,
+        params: summarizeInput(event.toolName, event.params),
+        error: event.error,
+        source: "auto",
+        status: "unresolved",
+      });
+    }
   }
 
   /**

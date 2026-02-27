@@ -13,7 +13,7 @@ function makeCtx(): ToolContext {
   return {
     workspaceDir: tmpDir,
     storageDir,
-    config: { shell: { jail: true } },
+    config: { shell: { defaultTimeout: 120000 } },
     workspace: {
       root: tmpDir,
       hasGit: false,
@@ -256,5 +256,60 @@ describe("file_edit — error cases", () => {
       edits: [{ oldText: "a", newText: "b" }],
     }, makeCtx()) as Record<string, unknown>;
     expect(result.error).toBe("file_not_found");
+  });
+});
+
+describe("file_edit — ambiguous match dedup", () => {
+  it("deduplicates matches on the same line across strategies", async () => {
+    // A pattern that matches via exact AND whitespace-normalized on the same line
+    // should only report 1 location, not 2
+    await writeTestFile("dedup.ts", [
+      "function hello() {",
+      "  return true;",
+      "}",
+      "function world() {",
+      "  return true;",
+      "}",
+    ].join("\n"));
+
+    const result = await fileEdit({
+      path: "dedup.ts",
+      edits: [{ oldText: "return true;", newText: "return false;" }],
+    }, makeCtx()) as any;
+
+    // Should fail with ambiguity — 2 distinct locations, not duplicates from multiple strategies
+    const resultStr = JSON.stringify(result);
+    expect(resultStr.toLowerCase()).toContain("ambiguous");
+    
+    // Check that reported failures show exactly 2 locations (line 2 and line 5)
+    expect(result.failures).toBeDefined();
+    expect(result.failures.length).toBe(1);
+    const failedEdit = result.failures[0];
+    expect(failedEdit.locations).toBeDefined();
+    const lines = failedEdit.locations.map((l: any) => l.line);
+    const uniqueLines = [...new Set(lines)];
+    // Lines should be deduplicated — 2 unique locations, not more from overlapping strategies
+    expect(lines.length).toBe(uniqueLines.length);
+    expect(uniqueLines.length).toBe(2);
+    expect(uniqueLines).toContain(2);
+    expect(uniqueLines).toContain(5);
+  });
+
+  it("uses lineHint to disambiguate among multiple matches", async () => {
+    await writeTestFile("hint.ts", [
+      "const a = 1;",
+      "const b = 2;",
+      "const a = 1;",
+      "const c = 3;",
+    ].join("\n"));
+
+    const result = await fileEdit({
+      path: "hint.ts",
+      edits: [{ oldText: "const a = 1;", newText: "const a = 99;", lineHint: 3 }],
+    }, makeCtx()) as Record<string, unknown>;
+
+    const content = await readTestFile("hint.ts");
+    // Should edit line 3, not line 1
+    expect(content).toBe("const a = 1;\nconst b = 2;\nconst a = 99;\nconst c = 3;");
   });
 });
