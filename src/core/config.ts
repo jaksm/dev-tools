@@ -104,6 +104,7 @@ export function resolveConfig(pluginConfig?: Record<string, unknown>): DevToolsC
       ...((pluginConfig?.tokenBudget as object) ?? {}),
     },
     roots: (pluginConfig?.roots as DevToolsConfig["roots"]) ?? undefined,
+    projectRoots: (pluginConfig?.projectRoots as string[]) ?? undefined,
   };
 
   return applyEnvOverrides(config);
