@@ -353,12 +353,16 @@ export class DevToolsCore {
 
     let newManifest: Record<string, number>;
 
-    if (oldManifest && Object.keys(oldManifest).length > 0) {
+    // Incremental re-index only valid if in-memory symbol index already has data.
+    // After gateway restart, symbol index is empty — must do full re-index regardless of manifest.
+    const canIncremental = oldManifest && Object.keys(oldManifest).length > 0 && symbolIndex.size > 0;
+
+    if (canIncremental) {
       // Incremental re-index
       const { result, manifest } = await indexer.incrementalIndex(
         workspaceDir,
         gitignoreFilter,
-        oldManifest,
+        oldManifest!,
       );
       newManifest = manifest;
 

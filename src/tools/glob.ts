@@ -31,9 +31,8 @@ export async function glob(params: GlobParams, ctx: ToolContext): Promise<unknow
     const files: Array<{ path: string; size: number; modified: string }> = [];
 
     for (const entry of entries) {
-      const relPath = params.path
-        ? path.join(params.path, entry.path)
-        : entry.path;
+      // Always produce workspace-relative paths for gitignore filtering
+      const relPath = path.relative(workspaceDir, path.resolve(searchBase, entry.path));
 
       if (workspace.gitignoreFilter(relPath)) continue;
 

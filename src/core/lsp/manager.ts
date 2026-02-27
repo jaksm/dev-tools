@@ -150,7 +150,13 @@ export class LspManager {
     }
 
     if (instance.state === "unavailable") {
-      return null;
+      // After a shell command (e.g. npm install), retry booting
+      if (this.shellCommandsSincePrereqCheck) {
+        instance.state = "available";
+        instance.lastError = null;
+      } else {
+        return null;
+      }
     }
 
     if (instance.state === "booting") {
@@ -180,7 +186,14 @@ export class LspManager {
     }
 
     if (instance.state === "unavailable") {
-      return { client: null, reason: this.buildUnavailableReason(instance) };
+      // After a shell command (e.g. npm install), retry booting — binary may now exist
+      if (this.shellCommandsSincePrereqCheck) {
+        instance.state = "available";
+        instance.lastError = null;
+        // Fall through to bootServer below
+      } else {
+        return { client: null, reason: this.buildUnavailableReason(instance) };
+      }
     }
 
     if (instance.state === "booting") {

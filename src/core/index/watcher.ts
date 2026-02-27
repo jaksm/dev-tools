@@ -2,6 +2,7 @@
  * File watcher — incremental re-indexing on file changes.
  */
 
+import path from "node:path";
 import { watch, type FSWatcher } from "chokidar";
 import { TreeSitterEngine } from "../tree-sitter/engine.js";
 import { WorkspaceIndexer } from "./indexer.js";
@@ -47,7 +48,13 @@ export class FileWatcher {
 
     this.watcher = watch(pattern, {
       cwd: this.workspaceDir,
-      ignored: (filePath: string) => this.gitignoreFilter(filePath),
+      ignored: (filePath: string) => {
+        // Chokidar may pass absolute paths; the ignore library requires relative ones
+        const rel = path.isAbsolute(filePath)
+          ? path.relative(this.workspaceDir, filePath)
+          : filePath;
+        return this.gitignoreFilter(rel);
+      },
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 200 },
