@@ -233,6 +233,22 @@ export class DevToolsCore {
   }
 
   /**
+   * Re-index specific files immediately (bypasses watcher debounce).
+   * Used by code_refactor after rename/fix to keep the symbol index fresh.
+   */
+  async reindexFiles(workspaceDir: string, filePaths: string[]): Promise<void> {
+    const indexer = this.indexers.get(workspaceDir);
+    if (!indexer) return;
+    for (const fp of filePaths) {
+      try {
+        await indexer.reindexFile(fp);
+      } catch {
+        // Best-effort — watcher will catch up later
+      }
+    }
+  }
+
+  /**
    * Initialize and start embedding indexing for a workspace.
    * Called after symbol indexing completes.
    */

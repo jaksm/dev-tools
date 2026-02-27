@@ -310,9 +310,12 @@ async function handleAdd(
     targetArray = parent.subtasks;
   }
 
+  // Determine the starting index to avoid duplicate IDs with existing children
+  const startIndex = targetArray.length;
   const newTasks = inputsToTasks(
     params.tasks as import("../core/task/types.js").TaskInput[],
     params.parentId === "root" ? undefined : params.parentId,
+    startIndex,
   );
 
   // Insert after specified sibling, or append

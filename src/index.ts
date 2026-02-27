@@ -668,7 +668,10 @@ function buildTools(
         const symbolIndex = core.getSymbolIndex(getProjectDir());
         const lspManager = core.getLspManager(getProjectDir());
         const lspResolver = core.getLspResolver(getProjectDir());
-        return codeRefactor(params as unknown as CodeRefactorParams, ctx, symbolIndex, lspManager, lspResolver);
+        const onFilesChanged = async (files: string[]) => {
+          await core.reindexFiles(getProjectDir(), files);
+        };
+        return codeRefactor(params as unknown as CodeRefactorParams, ctx, symbolIndex, lspManager, lspResolver, onFilesChanged);
       },
     ),
 

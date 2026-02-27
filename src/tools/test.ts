@@ -87,7 +87,9 @@ async function runVitest(
   const args = ["vitest", "run", "--reporter=json"];
 
   if (params.file) args.push(params.file);
-  if (params.name) args.push("--testNamePattern", params.name);
+  // Combine suite and name into testNamePattern (vitest matches against full path)
+  const namePattern = [params.suite, params.name].filter(Boolean).join(".*");
+  if (namePattern) args.push("--testNamePattern", namePattern);
 
   const { stdout, stderr, exitCode } = await runCommand(
     "npx",
@@ -173,7 +175,9 @@ async function runJest(
   const args = ["jest", "--json", "--no-coverage"];
 
   if (params.file) args.push(params.file);
-  if (params.name) args.push("--testNamePattern", params.name);
+  // Combine suite and name into testNamePattern (jest matches against full path)
+  const namePattern = [params.suite, params.name].filter(Boolean).join(".*");
+  if (namePattern) args.push("--testNamePattern", namePattern);
 
   const { stdout, stderr, exitCode } = await runCommand(
     "npx",
@@ -247,7 +251,9 @@ async function runPytest(
   const args = ["-m", "pytest", "--tb=short", "-q"];
 
   if (params.file) args.push(params.file);
-  if (params.name) args.push("-k", params.name);
+  // Combine suite and name with 'and' for pytest's -k expression
+  const kExpr = [params.suite, params.name].filter(Boolean).join(" and ");
+  if (kExpr) args.push("-k", kExpr);
 
   const { stdout, stderr, exitCode } = await runCommand(
     "python",

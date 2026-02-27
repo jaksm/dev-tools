@@ -11,7 +11,7 @@ import { SymbolIndex } from "../core/index/symbol-index.js";
 import { HnswIndex } from "../core/search/hnsw-index.js";
 import { EmbeddingIndexer } from "../core/search/indexer.js";
 import type { EmbeddingProvider } from "../core/search/embeddings.js";
-import type { SymbolInfo, ToolContext, Logger } from "../core/types.js";
+import type { SymbolInfo, SymbolKind, ToolContext, Logger } from "../core/types.js";
 import { generateIndexJson, writeIndexJson } from "../core/index/index-json.js";
 import { ImportGraph } from "../core/index/import-graph.js";
 
@@ -51,7 +51,7 @@ class MockEmbeddingProvider implements EmbeddingProvider {
 const logger: Logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
 const WORKSPACE = "/mock/workspace";
 
-function mkSym(name: string, kind: string, file: string, lines: [number, number], sig: string, docs?: string, code?: string): SymbolInfo {
+function mkSym(name: string, kind: SymbolKind, file: string, lines: [number, number], sig: string, docs?: string, code?: string): SymbolInfo {
   return {
     qualifiedName: name,
     kind,
@@ -101,8 +101,8 @@ describe("code_search — comprehensive", () => {
       workspace: {
         root: WORKSPACE,
         hasGit: true,
-        languages: [{ language: "typescript", root: WORKSPACE }],
-        testRunners: [{ name: "vitest", framework: "vitest", command: "npx vitest run" }],
+        languages: [{ language: "typescript", root: WORKSPACE, configFile: "tsconfig.json" }],
+        testRunners: [{ name: "vitest", framework: "vitest", command: "npx vitest run", root: WORKSPACE }],
         gitignoreFilter: () => false,
       },
       logger,
@@ -349,9 +349,10 @@ describe("code_search — comprehensive", () => {
 
       expect(result.success).toBe(true);
       expect(result.filter).toBe("services");
-      // All keys should contain "services"
-      for (const key of Object.keys(result.index)) {
-        expect(key).toContain("services");
+      // All files should contain "services"
+      expect(result.index.files.length).toBeGreaterThan(0);
+      for (const entry of result.index.files) {
+        expect(entry.file).toContain("services");
       }
     });
 
@@ -372,8 +373,9 @@ describe("code_search — comprehensive", () => {
       ) as any;
 
       expect(result.success).toBe(true);
-      for (const key of Object.keys(result.index)) {
-        expect(key.startsWith("src/utils/")).toBe(true);
+      expect(result.index.files.length).toBeGreaterThan(0);
+      for (const entry of result.index.files) {
+        expect(entry.file.startsWith("src/utils/")).toBe(true);
       }
     });
 

@@ -69,6 +69,7 @@ export async function codeRefactor(
   _symbolIndex: SymbolIndex,
   lspManager: LspManager | null,
   lspResolver: LspResolver | null,
+  onFilesChanged?: (files: string[]) => Promise<void>,
 ): Promise<ToolResult<CodeRefactorResult>> {
   if (!lspManager) {
     return {
@@ -85,11 +86,11 @@ export async function codeRefactor(
 
   switch (params.action) {
     case "rename":
-      return handleRename(params, ctx, lspManager, lspResolver);
+      return handleRename(params, ctx, lspManager, lspResolver, onFilesChanged);
     case "organize_imports":
-      return handleOrganizeImports(params, ctx, lspManager);
+      return handleOrganizeImports(params, ctx, lspManager, onFilesChanged);
     case "apply_fix":
-      return handleApplyFix(params, ctx, lspManager);
+      return handleApplyFix(params, ctx, lspManager, onFilesChanged);
     default:
       return {
         success: false,
@@ -105,6 +106,7 @@ async function handleRename(
   ctx: ToolContext,
   lspManager: LspManager,
   lspResolver: LspResolver | null,
+  onFilesChanged?: (files: string[]) => Promise<void>,
 ): Promise<ToolResult<CodeRefactorResult>> {
   if (!params.symbol) {
     return { success: false, error: "Missing required parameter: symbol" };
@@ -170,6 +172,16 @@ async function handleRename(
   const changes = await applyWorkspaceEdit(workspaceEdit, ctx.workspaceDir);
   const totalEdits = changes.reduce((sum, c) => sum + (c.edits ?? 0), 0);
 
+  // Immediately re-index changed files so the symbol index is fresh
+  if (onFilesChanged && changes.length > 0) {
+    const changedFiles = changes
+      .filter(c => c.type === "modified" || c.type === "created")
+      .map(c => path.resolve(ctx.workspaceDir, c.file));
+    if (changedFiles.length > 0) {
+      await onFilesChanged(changedFiles).catch(() => {});
+    }
+  }
+
   return {
     success: true,
     data: {
@@ -188,6 +200,7 @@ async function handleOrganizeImports(
   params: CodeRefactorParams,
   ctx: ToolContext,
   lspManager: LspManager,
+  onFilesChanged?: (files: string[]) => Promise<void>,
 ): Promise<ToolResult<CodeRefactorResult>> {
   if (!params.path) {
     return { success: false, error: "Missing required parameter: path" };
@@ -253,6 +266,16 @@ async function handleOrganizeImports(
   const changes = await applyWorkspaceEdit(organizeAction.edit, ctx.workspaceDir);
   const totalEdits = changes.reduce((sum, c) => sum + (c.edits ?? 0), 0);
 
+  // Immediately re-index changed files
+  if (onFilesChanged && changes.length > 0) {
+    const changedFiles = changes
+      .filter(c => c.type === "modified" || c.type === "created")
+      .map(c => path.resolve(ctx.workspaceDir, c.file));
+    if (changedFiles.length > 0) {
+      await onFilesChanged(changedFiles).catch(() => {});
+    }
+  }
+
   return {
     success: true,
     data: {
@@ -271,6 +294,7 @@ async function handleApplyFix(
   params: CodeRefactorParams,
   ctx: ToolContext,
   lspManager: LspManager,
+  onFilesChanged?: (files: string[]) => Promise<void>,
 ): Promise<ToolResult<CodeRefactorResult>> {
   if (!params.fixFile) {
     return { success: false, error: "Missing required parameter: fixFile" };
@@ -347,6 +371,16 @@ async function handleApplyFix(
 
   const changes = await applyWorkspaceEdit(fixToApply.edit, ctx.workspaceDir);
   const totalEdits = changes.reduce((sum, c) => sum + (c.edits ?? 0), 0);
+
+  // Immediately re-index changed files
+  if (onFilesChanged && changes.length > 0) {
+    const changedFiles = changes
+      .filter(c => c.type === "modified" || c.type === "created")
+      .map(c => path.resolve(ctx.workspaceDir, c.file));
+    if (changedFiles.length > 0) {
+      await onFilesChanged(changedFiles).catch(() => {});
+    }
+  }
 
   return {
     success: true,

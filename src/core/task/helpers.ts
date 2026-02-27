@@ -76,9 +76,9 @@ export function findTaskInContext(tasks: Task[], id: string): { task: Task; sibl
 /**
  * Convert TaskInput[] to Task[] with status = "pending".
  */
-export function inputsToTasks(inputs: TaskInput[], parentId?: string): Task[] {
+export function inputsToTasks(inputs: TaskInput[], parentId?: string, startIndex = 0): Task[] {
   return inputs.map((input, index) => {
-    const id = input.id ?? (parentId ? `${parentId}.${index + 1}` : `${index + 1}`);
+    const id = input.id ?? (parentId ? `${parentId}.${startIndex + index + 1}` : `${startIndex + index + 1}`);
     const task: Task = {
       id,
       title: input.title,

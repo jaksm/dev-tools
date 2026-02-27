@@ -325,21 +325,23 @@ async function handleIndex(
     return { success: true, index: indexData };
   }
 
-  // Filter entries by glob-like pattern
-  const filtered: Record<string, unknown> = {};
-  const filterNormalized = filter.replace(/\*\*/g, "").replace(/\*/g, "");
+  // Filter files array by glob-like pattern
+  const files = Array.isArray((indexData as { files?: unknown[] }).files)
+    ? (indexData as { files: Array<{ file: string }> }).files
+    : [];
 
-  for (const [key, value] of Object.entries(indexData)) {
-    if (key.includes(filterNormalized) || matchSimpleGlob(key, filter)) {
-      filtered[key] = value;
-    }
-  }
+  const filtered = files.filter(entry => {
+    const filePath = entry.file;
+    if (!filePath) return false;
+    const filterNormalized = filter.replace(/\*\*/g, "").replace(/\*/g, "");
+    return filePath.includes(filterNormalized) || matchSimpleGlob(filePath, filter);
+  });
 
   return {
     success: true,
     filter,
-    matchedFiles: Object.keys(filtered).length,
-    index: filtered,
+    matchedFiles: filtered.length,
+    index: { ...indexData, files: filtered },
   };
 }
 
