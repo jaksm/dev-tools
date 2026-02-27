@@ -1,6 +1,6 @@
 ---
 name: dev-tools
-description: "Complete coding toolbox — 16 tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing. Use when: writing code, exploring codebases, debugging, refactoring, running tests, or planning multi-step development work. Replaces the need for spawning external coding agents. NOT for: non-code tasks, browser automation, or deployment operations."
+description: "Complete coding toolbox — 13 tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing. Use when: writing code, exploring codebases, debugging, refactoring, running tests, or planning multi-step development work. Replaces the need for spawning external coding agents. NOT for: non-code tasks, browser automation, or deployment operations."
 metadata:
   {
     "openclaw":
@@ -23,7 +23,7 @@ metadata:
 
 # Dev-Tools — Coding Toolbox
 
-16 native tools for code intelligence, editing, search, diagnostics, and workflow management. Everything a dev agent needs in one plugin — no TUI coding agents, no PTY, no overhead.
+13 native tools for code intelligence, editing, search, diagnostics, and workflow management. Everything a dev agent needs in one plugin — no TUI coding agents, no PTY, no overhead.
 
 ## Quick Start
 
@@ -170,16 +170,40 @@ xcode-select --install
 
 Without LSP servers, `code_inspect` falls back to symbol index (still useful, but no type information), and `code_refactor`/`code_diagnose` are unavailable.
 
+**Tip:** After installing a language server via `shell`, the LSP will auto-detect it on the next tool call — no restart needed.
+
 ## Configuration
 
-In your `openclaw.json` plugin config, or via environment variables:
+Add to your `openclaw.json` under `plugins.entries`:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "dev-tools": {
+        "enabled": true,
+        "config": {
+          "projectRoots": ["~/Projects/myapp"],
+          "search": { "provider": "local" },
+          "lsp": { "maxRestartAttempts": 3 },
+          "shell": { "defaultTimeout": 120000 },
+          "tokenBudget": { "maxResponseTokens": 4000 }
+        }
+      }
+    }
+  }
+}
+```
+
+`projectRoots` maps the agent's workspace to an actual project directory — all tools operate on the project, not the agent workspace.
+
+Settings can also be set via environment variables:
 
 | Setting | Env Var | Default | Description |
 |---|---|---|---|
 | `search.provider` | `DEV_TOOLS_SEARCH_PROVIDER` | `local` | Embedding provider: `local` or `api` |
 | `search.model` | `DEV_TOOLS_SEARCH_MODEL` | `Xenova/all-MiniLM-L6-v2` | Embedding model |
 | `shell.defaultTimeout` | `DEV_TOOLS_SHELL_TIMEOUT` | `120000` | Shell command timeout (ms) |
-| `shell.jail` | `DEV_TOOLS_SHELL_JAIL` | `true` | Restrict file ops to workspace |
 | `tokenBudget.maxResponseTokens` | `DEV_TOOLS_TOKEN_BUDGET` | `4000` | Max tokens per tool response |
 | `lsp.maxRestartAttempts` | `DEV_TOOLS_LSP_MAX_RESTARTS` | `3` | LSP crash recovery attempts |
 | `lsp.debug` | `DEV_TOOLS_LSP_DEBUG` | `false` | Verbose LSP logging |
@@ -191,3 +215,5 @@ In your `openclaw.json` plugin config, or via environment variables:
 - Token budget truncation saves full output to disk — use `file_read` or `grep` to access truncated content
 - LSP servers lazy-boot on first use — no startup cost until needed
 - Symbol index updates incrementally via file watcher — always current
+- After gateway restart, a full re-index runs automatically (incremental only works within a session)
+- LSP servers auto-detect binary installation mid-session — install via `shell`, then use `code_inspect`/`code_diagnose` immediately

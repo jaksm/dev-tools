@@ -1,6 +1,6 @@
 # dev-tools
 
-A complete coding toolbox for OpenClaw agents. 16 native tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing.
+A complete coding toolbox for OpenClaw agents. 13 native tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing.
 
 **Replaces the need for spawning external coding agents** (Claude Code, Codex, etc.) — agents get structured tool calls with JSON output instead of wrestling with TUI processes.
 
