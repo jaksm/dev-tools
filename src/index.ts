@@ -119,7 +119,8 @@ export default function register(api: OpenClawPluginApi) {
     const agentWorkspace = hookCtx.workspaceDir;
     if (!agentWorkspace) return;
 
-    // Resolve the active project (may be different from agent workspace)
+    // Try auto-activate from registry before falling back to agent workspace
+    await core.tryAutoActivate(agentWorkspace);
     const projectDir = core.getActiveProject(agentWorkspace);
     await core.analyzeWorkspace(projectDir);
     await core.onSessionStart(projectDir, hookCtx.sessionId ?? "unknown");

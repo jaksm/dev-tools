@@ -20,6 +20,15 @@ export interface IndexerResult {
   durationMs: number;
 }
 
+export interface IncrementalResult {
+  added: number;
+  updated: number;
+  removed: number;
+  unchanged: number;
+  symbolCount: number;
+  durationMs: number;
+}
+
 export interface FileImportsExports {
   imports: ImportInfo[];
   exports: ExportInfo[];
@@ -233,5 +242,125 @@ export class WorkspaceIndexer {
     }
 
     return files;
+  }
+
+  /**
+   * Build and return an mtime manifest for all currently indexed files.
+   * Returns { absolutePath: mtimeMs } for persistence.
+   */
+  async buildManifest(
+    workspaceDir: string,
+    gitignoreFilter: (path: string) => boolean,
+  ): Promise<Record<string, number>> {
+    const files = await this.collectFiles(workspaceDir, gitignoreFilter);
+    const manifest: Record<string, number> = {};
+    for (const f of files) {
+      try {
+        const stat = await fs.stat(f);
+        manifest[f] = stat.mtimeMs;
+      } catch {
+        // File gone between collect and stat — skip
+      }
+    }
+    return manifest;
+  }
+
+  /**
+   * Incremental re-index: diff current filesystem against a saved manifest.
+   * Only re-parses changed/new files. Removes deleted files from index.
+   */
+  async incrementalIndex(
+    workspaceDir: string,
+    gitignoreFilter: (path: string) => boolean,
+    oldManifest: Record<string, number>,
+    onProgress?: (processed: number, total: number) => void,
+  ): Promise<{ result: IncrementalResult; manifest: Record<string, number> }> {
+    const start = Date.now();
+    const currentFiles = await this.collectFiles(workspaceDir, gitignoreFilter);
+    const currentSet = new Set(currentFiles);
+    const oldPaths = new Set(Object.keys(oldManifest));
+
+    const toAdd: string[] = [];
+    const toUpdate: string[] = [];
+    const toRemove: string[] = [];
+
+    // Check current files against old manifest
+    for (const f of currentFiles) {
+      if (!oldPaths.has(f)) {
+        toAdd.push(f);
+      } else {
+        try {
+          const stat = await fs.stat(f);
+          if (stat.mtimeMs !== oldManifest[f]) {
+            toUpdate.push(f);
+          }
+        } catch {
+          toRemove.push(f);
+        }
+      }
+    }
+
+    // Files in old manifest but not on disk → deleted
+    for (const f of oldPaths) {
+      if (!currentSet.has(f)) {
+        toRemove.push(f);
+      }
+    }
+
+    const unchanged = currentFiles.length - toAdd.length - toUpdate.length;
+    const total = toAdd.length + toUpdate.length + toRemove.length;
+    let processed = 0;
+
+    // Remove deleted files
+    for (const f of toRemove) {
+      this.removeFile(f);
+      processed++;
+      if (onProgress && processed % 50 === 0) onProgress(processed, total);
+    }
+
+    // Re-index updated files
+    for (const f of toUpdate) {
+      try {
+        await this.reindexFile(f);
+      } catch {
+        // Log but continue
+      }
+      processed++;
+      if (onProgress && processed % 50 === 0) onProgress(processed, total);
+    }
+
+    // Index new files
+    for (const f of toAdd) {
+      try {
+        await this.indexFile(f);
+      } catch {
+        // Log but continue
+      }
+      processed++;
+      if (onProgress && processed % 50 === 0) onProgress(processed, total);
+    }
+
+    // Build new manifest
+    const manifest: Record<string, number> = {};
+    for (const f of currentFiles) {
+      try {
+        const stat = await fs.stat(f);
+        manifest[f] = stat.mtimeMs;
+      } catch {
+        // skip
+      }
+    }
+
+    return {
+      result: {
+        added: toAdd.length,
+        updated: toUpdate.length,
+        removed: toRemove.length,
+        unchanged,
+        symbolCount: this.symbolIndex.size,
+        durationMs: Date.now() - start,
+      },
+      manifest,
+    };
   }
 }

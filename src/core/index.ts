@@ -39,6 +39,14 @@ import { LspResolver } from "./lsp/resolver.js";
 // Phase 5 imports
 import { createTaskStorage, type TaskStorage } from "./task/storage.js";
 
+// Project registry
+import { registerProject, findProjectForDir, markProjectIndexed } from "./project-registry.js";
+
+// Manifest path for incremental re-indexing
+function manifestPath(storageDir: string): string {
+  return path.join(storageDir, "index", "manifest.json");
+}
+
 export class DevToolsCore {
   private config: DevToolsConfig;
   private logger: Logger;
@@ -84,6 +92,11 @@ export class DevToolsCore {
   setActiveProject(agentWorkspace: string, projectDir: string): void {
     this.activeProjects.set(agentWorkspace, projectDir);
     this.logger.info(`[dev-tools] Active project set: ${projectDir} (agent workspace: ${agentWorkspace})`);
+    // Persist to registry for cross-session recall
+    const slug = createStorageManager(projectDir).slug;
+    registerProject(projectDir, slug).catch(e => {
+      this.logger.warn(`[dev-tools] Failed to persist project to registry: ${e}`);
+    });
   }
 
   /**
@@ -99,6 +112,23 @@ export class DevToolsCore {
    */
   hasActiveProject(agentWorkspace: string): boolean {
     return this.activeProjects.has(agentWorkspace);
+  }
+
+  /**
+   * Try to auto-activate a project for this agent workspace by checking the registry.
+   * Returns the project dir if found, null otherwise.
+   */
+  async tryAutoActivate(agentWorkspace: string): Promise<string | null> {
+    if (this.activeProjects.has(agentWorkspace)) {
+      return this.activeProjects.get(agentWorkspace)!;
+    }
+    const entry = await findProjectForDir(agentWorkspace);
+    if (entry) {
+      this.activeProjects.set(agentWorkspace, entry.root);
+      this.logger.info(`[dev-tools] Auto-activated project: ${entry.root} (matched from registry)`);
+      return entry.root;
+    }
+    return null;
   }
 
   /**
@@ -286,12 +316,14 @@ export class DevToolsCore {
 
   /**
    * Index the workspace — parse all source files, extract symbols, build import graph.
+   * Uses incremental re-indexing when a manifest exists from a previous run.
    */
   async indexWorkspace(workspaceDir: string, gitignoreFilter: (path: string) => boolean): Promise<void> {
     await this.engine.init();
 
     const symbolIndex = this.getSymbolIndex(workspaceDir);
     const importGraph = this.getImportGraph(workspaceDir);
+    const storage = createStorageManager(workspaceDir);
 
     let indexer = this.indexers.get(workspaceDir);
     if (!indexer) {
@@ -304,14 +336,51 @@ export class DevToolsCore {
       this.indexers.set(workspaceDir, indexer);
     }
 
-    const result = await indexer.indexWorkspace(workspaceDir, gitignoreFilter);
+    // Try incremental re-index if manifest exists
+    const mPath = manifestPath(storage.storageDir);
+    let oldManifest: Record<string, number> | null = null;
+    try {
+      const raw = await fs.readFile(mPath, "utf-8");
+      oldManifest = JSON.parse(raw);
+    } catch {
+      // No manifest — full index needed
+    }
+
+    let newManifest: Record<string, number>;
+
+    if (oldManifest && Object.keys(oldManifest).length > 0) {
+      // Incremental re-index
+      const { result, manifest } = await indexer.incrementalIndex(
+        workspaceDir,
+        gitignoreFilter,
+        oldManifest,
+      );
+      newManifest = manifest;
+
+      const changed = result.added + result.updated + result.removed;
+      if (changed === 0) {
+        this.logger.info(
+          `[dev-tools] Index unchanged: ${result.unchanged} files, ${result.symbolCount} symbols (incremental, 0 changes)`,
+        );
+      } else {
+        this.logger.info(
+          `[dev-tools] Incremental index: +${result.added} -${result.removed} ~${result.updated} files (${result.unchanged} unchanged), ${result.symbolCount} symbols in ${result.durationMs}ms`,
+        );
+      }
+    } else {
+      // Full index
+      const result = await indexer.indexWorkspace(workspaceDir, gitignoreFilter);
+      this.logger.info(
+        `[dev-tools] Full index: ${result.symbolCount} symbols from ${result.filesIndexed} files in ${result.durationMs}ms`,
+      );
+      newManifest = await indexer.buildManifest(workspaceDir, gitignoreFilter);
+    }
 
     // Build import graph (explicit imports + type references)
     importGraph.build(indexer.getAllImportsExports(), workspaceDir);
     importGraph.addTypeReferenceEdges(indexer.getFileTypeRefs(), symbolIndex);
 
     // Generate INDEX.json
-    const storage = createStorageManager(workspaceDir);
     const indexJson = generateIndexJson({
       symbolIndex,
       importGraph,
@@ -321,11 +390,14 @@ export class DevToolsCore {
     });
     await writeIndexJson(indexJson, storage.indexDir());
 
-    this.indexTimestamps.set(workspaceDir, Date.now());
+    // Save manifest for next incremental run
+    await fs.mkdir(path.dirname(mPath), { recursive: true });
+    await fs.writeFile(mPath, JSON.stringify(newManifest), "utf-8");
 
-    this.logger.info(
-      `[dev-tools] Index complete: ${result.symbolCount} symbols, ${result.filesIndexed} files, ${importGraph.edgeCount} import edges`,
-    );
+    // Update registry
+    markProjectIndexed(workspaceDir).catch(() => {});
+
+    this.indexTimestamps.set(workspaceDir, Date.now());
 
     // Phase 3: trigger embedding indexing in background
     this.startEmbeddingIndex(workspaceDir).catch(e => {
