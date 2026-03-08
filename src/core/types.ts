@@ -42,6 +42,8 @@ export interface DevToolsConfig {
   contextInjection?: {
     /** Include rendered INDEX.json in before_prompt_build context. Default: true */
     indexJson?: boolean;
+    /** Include generated AGENTS.md in before_prompt_build context. Default: true */
+    agentsMd?: boolean;
     /** Max approximate tokens for the rendered index. Default: 2000 */
     maxTokens?: number;
   };

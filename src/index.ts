@@ -201,13 +201,26 @@ export default function register(api: OpenClawPluginApi) {
   if (api.registerCommand) {
     api.registerCommand({
       name: "dev-tools",
-      description: "Dev-tools status, setup, and management. Usage: /dev-tools [setup|init <path>|status]",
+      description: "Dev-tools status, setup, and management. Usage: /dev-tools [setup|init <path>|agents-md|status]",
       handler: async (ctx) => {
         const subcommand = ctx.args[0] ?? "status";
         const config = (api.pluginConfig ?? {}) as import("./core/types.js").DevToolsConfig;
 
         if (subcommand === "setup") {
           return handleSetup(config, api.logger, ctx.workspaceDir);
+        }
+
+        if (subcommand === "agents-md") {
+          if (!ctx.workspaceDir) {
+            return { success: false, error: "No workspace directory available." };
+          }
+          const projectDir = core.getActiveProject(ctx.workspaceDir);
+          const { content, path: agentsMdPath } = await core.regenerateAgentsMd(projectDir);
+          return {
+            success: true,
+            preview: content.slice(0, 200),
+            path: agentsMdPath,
+          };
         }
 
         if (subcommand === "init") {

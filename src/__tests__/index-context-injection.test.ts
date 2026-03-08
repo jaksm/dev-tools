@@ -129,7 +129,11 @@ describe("INDEX.json context injection", () => {
     // Count the approximate token size of the index portion
     const indexStart = status!.indexOf("# Project Index");
     if (indexStart >= 0) {
-      const indexPortion = status!.substring(indexStart);
+      // Extract only the INDEX.json portion (stop before AGENTS.md or end)
+      const agentsMdStart = status!.indexOf("# AGENTS.md", indexStart);
+      const indexPortion = agentsMdStart >= 0
+        ? status!.substring(indexStart, agentsMdStart).trimEnd()
+        : status!.substring(indexStart);
       const approxTokens = Math.ceil(indexPortion.length / 4);
       expect(approxTokens).toBeLessThanOrEqual(200);
     }

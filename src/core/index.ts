@@ -30,6 +30,7 @@ import { ImportGraph } from "./index/import-graph.js";
 import { FileWatcher } from "./index/watcher.js";
 import { generateIndexJson, writeIndexJson, type IndexJson } from "./index/index-json.js";
 import { renderIndexWithBudget } from "./index/index-renderer.js";
+import { generateAgentsMd, writeAgentsMd, readAgentsMd } from "./agents-md.js";
 
 // Phase 3 imports
 import { createEmbeddingProvider, type EmbeddingProvider } from "./search/embeddings.js";
@@ -331,7 +332,12 @@ export class DevToolsCore {
     );
 
     // Trigger initial indexing in background (don't await — let it run)
-    this.indexWorkspace(workspaceDir, gitignoreFilter).catch(e => {
+    this.indexWorkspace(workspaceDir, gitignoreFilter).then(() => {
+      // After indexing completes, auto-generate AGENTS.md if not present
+      this.autoGenerateAgentsMd(workspaceDir).catch(e => {
+        this.logger.warn(`[dev-tools] AGENTS.md auto-generation failed: ${e}`);
+      });
+    }).catch(e => {
       this.logger.warn(`[dev-tools] Initial indexing failed: ${e}`);
     });
 
@@ -540,7 +546,67 @@ export class DevToolsCore {
       }
     }
 
+    // AGENTS.md context injection
+    if (contextInjection?.agentsMd !== false) {
+      const agentsMd = this.loadCachedAgentsMd(workspaceDir);
+      if (agentsMd) {
+        lines.push("");
+        lines.push(agentsMd);
+      }
+    }
+
     return lines.join("\n");
+  }
+
+  /**
+   * Load cached AGENTS.md from disk for a workspace.
+   * Returns null if not available.
+   */
+  private loadCachedAgentsMd(workspaceDir: string): string | null {
+    const storage = createStorageManager(workspaceDir);
+    const agentsMdPath = path.join(storage.storageDir, "AGENTS.md");
+    try {
+      return fsSync.readFileSync(agentsMdPath, "utf-8");
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Auto-generate AGENTS.md if it doesn't exist in storage.
+   * Fire-and-forget — never blocks workspace activation.
+   */
+  async autoGenerateAgentsMd(workspaceDir: string): Promise<void> {
+    const storage = createStorageManager(workspaceDir);
+    const agentsMdPath = path.join(storage.storageDir, "AGENTS.md");
+
+    // Skip if already exists
+    try {
+      await fs.access(agentsMdPath);
+      return;
+    } catch {
+      // Doesn't exist — generate
+    }
+
+    try {
+      const indexData = this.loadCachedIndexJson(workspaceDir);
+      const content = await generateAgentsMd(workspaceDir, storage, indexData ?? undefined);
+      await writeAgentsMd(content, storage.storageDir);
+      this.logger.info(`[dev-tools] Auto-generated AGENTS.md for ${workspaceDir}`);
+    } catch (e) {
+      this.logger.warn(`[dev-tools] Failed to auto-generate AGENTS.md: ${e}`);
+    }
+  }
+
+  /**
+   * Regenerate AGENTS.md for a workspace (force).
+   */
+  async regenerateAgentsMd(workspaceDir: string): Promise<{ content: string; path: string }> {
+    const storage = createStorageManager(workspaceDir);
+    const indexData = this.loadCachedIndexJson(workspaceDir);
+    const content = await generateAgentsMd(workspaceDir, storage, indexData ?? undefined);
+    const filePath = await writeAgentsMd(content, storage.storageDir);
+    return { content, path: filePath };
   }
 
   /**
