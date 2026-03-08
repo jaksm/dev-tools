@@ -39,6 +39,12 @@ export interface DevToolsConfig {
   tokenBudget?: {
     maxResponseTokens?: number;
   };
+  contextInjection?: {
+    /** Include rendered INDEX.json in before_prompt_build context. Default: true */
+    indexJson?: boolean;
+    /** Max approximate tokens for the rendered index. Default: 2000 */
+    maxTokens?: number;
+  };
   roots?: LanguageRootConfig[];
   /** Project roots to auto-initialize on session start. First match wins. */
   projectRoots?: string[];

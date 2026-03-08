@@ -19,6 +19,7 @@ import { appendErrorLog, shouldLogError } from "./error-log.js";
 import { cleanToolOutput } from "./token-budget.js";
 import type { ToolCallLogger } from "./logging.js";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 
 // Phase 2 imports
 import { TreeSitterEngine } from "./tree-sitter/engine.js";
@@ -27,7 +28,8 @@ import { SymbolIndex } from "./index/symbol-index.js";
 import { WorkspaceIndexer } from "./index/indexer.js";
 import { ImportGraph } from "./index/import-graph.js";
 import { FileWatcher } from "./index/watcher.js";
-import { generateIndexJson, writeIndexJson } from "./index/index-json.js";
+import { generateIndexJson, writeIndexJson, type IndexJson } from "./index/index-json.js";
+import { renderIndexWithBudget } from "./index/index-renderer.js";
 
 // Phase 3 imports
 import { createEmbeddingProvider, type EmbeddingProvider } from "./search/embeddings.js";
@@ -524,7 +526,37 @@ export class DevToolsCore {
     lines.push("");
     lines.push("Tool guide: ls/glob to explore → code_outline for structure → code_read for symbols → code_search for concepts → grep for exact text → code_inspect for types/refs → file_edit to modify → test to verify → code_diagnose for errors → git to commit");
 
+    // INDEX.json context injection
+    const contextInjection = this.config.contextInjection;
+    if (contextInjection?.indexJson !== false) {
+      const indexData = this.loadCachedIndexJson(workspaceDir);
+      if (indexData) {
+        const maxTokens = contextInjection?.maxTokens ?? 2000;
+        const rendered = renderIndexWithBudget(indexData, maxTokens);
+        if (rendered) {
+          lines.push("");
+          lines.push(rendered);
+        }
+      }
+    }
+
     return lines.join("\n");
+  }
+
+  /**
+   * Load cached INDEX.json from disk for a workspace.
+   * Returns null if not available.
+   */
+  private loadCachedIndexJson(workspaceDir: string): IndexJson | null {
+    // Try reading synchronously from the storage location
+    const storage = createStorageManager(workspaceDir);
+    const indexPath = path.join(storage.indexDir(), "INDEX.json");
+    try {
+      const raw = fsSync.readFileSync(indexPath, "utf-8");
+      return JSON.parse(raw) as IndexJson;
+    } catch {
+      return null;
+    }
   }
 
   /**

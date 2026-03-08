@@ -82,6 +82,35 @@ export function renderIndex(index: IndexJson, opts?: RenderOptions): string {
   return lines.join("\n");
 }
 
+/**
+ * Render INDEX.json with a token budget constraint.
+ * Progressively reduces maxFiles until the output fits within the budget.
+ * Returns null if even the header alone exceeds the budget.
+ */
+export function renderIndexWithBudget(index: IndexJson, maxTokens: number): string | null {
+  // Try full render first
+  let rendered = renderIndex(index);
+  if (estimateTokens(rendered) <= maxTokens) return rendered;
+
+  // Progressive reduction: try fewer files
+  const steps = [200, 100, 50, 25, 10, 5, 0];
+  for (const maxFiles of steps) {
+    rendered = renderIndex(index, { maxFiles });
+    if (estimateTokens(rendered) <= maxTokens) return rendered;
+  }
+
+  // Even header-only (0 files) exceeds budget — return just the first line
+  const headerLine = `# Project Index — ${index.totalFiles} files, ${index.totalSymbols} symbols`;
+  if (estimateTokens(headerLine) <= maxTokens) return headerLine;
+
+  return null;
+}
+
+/** Approximate token count: ~4 chars per token. */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 function groupByDirectory(entries: IndexJsonEntry[]): Map<string, IndexJsonEntry[]> {
   const groups = new Map<string, IndexJsonEntry[]>();
 
