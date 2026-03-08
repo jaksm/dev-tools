@@ -110,6 +110,46 @@ const DEFAULT_SERVERS: Record<string, LspServerDefinition> = {
     installHint: "See https://github.com/OmniSharp/omnisharp-roslyn",
     languages: ["csharp"],
   },
+
+  html: {
+    command: "vscode-html-language-server",
+    args: ["--stdio"],
+    enabled: true,
+    initTimeoutMs: 15_000,
+    requestTimeoutMs: 10_000,
+    installHint: "npm install -g vscode-langservers-extracted",
+    languages: ["html"],
+  },
+
+  css: {
+    command: "vscode-css-language-server",
+    args: ["--stdio"],
+    enabled: true,
+    initTimeoutMs: 15_000,
+    requestTimeoutMs: 10_000,
+    installHint: "npm install -g vscode-langservers-extracted",
+    languages: ["css", "scss", "less"],
+  },
+
+  json: {
+    command: "vscode-json-language-server",
+    args: ["--stdio"],
+    enabled: true,
+    initTimeoutMs: 15_000,
+    requestTimeoutMs: 10_000,
+    installHint: "npm install -g vscode-langservers-extracted",
+    languages: ["json", "jsonc"],
+  },
+
+  tailwindcss: {
+    command: "@tailwindcss/language-server",
+    args: ["--stdio"],
+    enabled: true,
+    initTimeoutMs: 20_000,
+    requestTimeoutMs: 10_000,
+    installHint: "npm install -g @tailwindcss/language-server",
+    languages: ["tailwindcss"],
+  },
 };
 
 // ── Language → Server mapping ───────────────────────────────────────────────

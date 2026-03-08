@@ -115,4 +115,121 @@ describe("LSP server configs", () => {
     expect(langs).toContain("go");
     expect(langs).toContain("swift");
   });
+
+  // ── Web Language LSP Servers ────────────────────────────────────────────
+
+  describe("web language servers", () => {
+    it("returns config for html", () => {
+      const config = getLspServerConfig("html");
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("vscode-html-language-server");
+      expect(config!.args).toContain("--stdio");
+      expect(config!.enabled).toBe(true);
+      expect(config!.installHint).toContain("vscode-langservers-extracted");
+    });
+
+    it("returns config for css", () => {
+      const config = getLspServerConfig("css");
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("vscode-css-language-server");
+      expect(config!.args).toContain("--stdio");
+      expect(config!.enabled).toBe(true);
+    });
+
+    it("returns css config for scss (shared server)", () => {
+      const config = getLspServerConfig("scss");
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("vscode-css-language-server");
+    });
+
+    it("returns css config for less (shared server)", () => {
+      const config = getLspServerConfig("less");
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("vscode-css-language-server");
+    });
+
+    it("returns config for json", () => {
+      const config = getLspServerConfig("json");
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("vscode-json-language-server");
+      expect(config!.args).toContain("--stdio");
+      expect(config!.enabled).toBe(true);
+    });
+
+    it("returns json config for jsonc (shared server)", () => {
+      const config = getLspServerConfig("jsonc");
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("vscode-json-language-server");
+    });
+
+    it("returns config for tailwindcss", () => {
+      const config = getLspServerConfig("tailwindcss");
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("@tailwindcss/language-server");
+      expect(config!.args).toContain("--stdio");
+      expect(config!.enabled).toBe(true);
+      expect(config!.initTimeoutMs).toBe(20_000);
+    });
+
+    it("hasLspSupport returns true for web languages", () => {
+      expect(hasLspSupport("html")).toBe(true);
+      expect(hasLspSupport("css")).toBe(true);
+      expect(hasLspSupport("scss")).toBe(true);
+      expect(hasLspSupport("less")).toBe(true);
+      expect(hasLspSupport("json")).toBe(true);
+      expect(hasLspSupport("jsonc")).toBe(true);
+      expect(hasLspSupport("tailwindcss")).toBe(true);
+    });
+
+    it("getSupportedLanguages includes web languages", () => {
+      const langs = getSupportedLanguages();
+      expect(langs).toContain("html");
+      expect(langs).toContain("css");
+      expect(langs).toContain("scss");
+      expect(langs).toContain("less");
+      expect(langs).toContain("json");
+      expect(langs).toContain("jsonc");
+      expect(langs).toContain("tailwindcss");
+    });
+
+    it("getAllServerConfigs includes web servers", () => {
+      const all = getAllServerConfigs();
+      expect(all.html).toBeDefined();
+      expect(all.css).toBeDefined();
+      expect(all.json).toBeDefined();
+      expect(all.tailwindcss).toBeDefined();
+    });
+
+    it("user override works for web servers", () => {
+      const config = getLspServerConfig("html", {
+        lsp: {
+          servers: {
+            html: {
+              command: "custom-html-server",
+              enabled: false,
+            },
+          },
+        },
+      });
+      expect(config).not.toBeNull();
+      expect(config!.command).toBe("custom-html-server");
+      expect(config!.enabled).toBe(false);
+      // Defaults preserved
+      expect(config!.args).toContain("--stdio");
+      expect(config!.installHint).toContain("vscode-langservers-extracted");
+    });
+
+    it("user override works for css server affecting scss", () => {
+      const config = getLspServerConfig("scss", {
+        lsp: {
+          servers: {
+            css: { enabled: false },
+          },
+        },
+      });
+      expect(config).not.toBeNull();
+      expect(config!.enabled).toBe(false);
+      expect(config!.command).toBe("vscode-css-language-server");
+    });
+  });
 });

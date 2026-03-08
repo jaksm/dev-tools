@@ -82,6 +82,13 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   ".kt": "kotlin",
   ".kts": "kotlin",
   ".cs": "csharp",
+  ".html": "html",
+  ".htm": "html",
+  ".css": "css",
+  ".scss": "scss",
+  ".less": "less",
+  ".json": "json",
+  ".jsonc": "jsonc",
 };
 
 // ── LSP Manager ─────────────────────────────────────────────────────────────
