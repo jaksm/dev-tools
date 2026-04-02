@@ -2,3 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 fixtures/
+
+# Workspace-specific (agent memory, design exports, bootstrap)
+memory/
+design-artifacts/
+stitch-exports/
+BOOTSTRAP.md

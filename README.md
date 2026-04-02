@@ -1,173 +1,233 @@
-# dev-tools
+# @jaksm/dev-tools
 
-A complete coding toolbox for OpenClaw agents. 16 native tools for file operations, code intelligence, semantic search, LSP diagnostics, task planning, git, and testing.
+IDE-grade coding tools for AI agents. Tree-sitter parsing, semantic search, LSP intelligence, and 16 battle-tested tools — in a single package.
 
-**Replaces the need for spawning external coding agents** (Claude Code, Codex, etc.) — agents get structured tool calls with JSON output instead of wrestling with TUI processes.
+Built for [OpenClaw](https://github.com/openclaw/openclaw) but works standalone with **any** agent framework (Mastra, LangChain, Vercel AI SDK, or raw function calls).
 
-## Quick Setup
+## What's Inside
+
+| Category | Tools | What They Do |
+|---|---|---|
+| **Foundation** | `fileRead`, `fileWrite`, `fileEdit`, `grep`, `glob`, `ls`, `shell` | File operations with line numbers, cascading fuzzy edit matching, ripgrep search, gitignore-aware listing |
+| **Code Intelligence** | `codeOutline`, `codeRead`, `codeSearch`, `codeInspect`, `codeDiagnose`, `codeRefactor` | Symbol index, semantic search (HNSW + embeddings), LSP hover/references/rename, diagnostics |
+| **Workflow** | `git`, `test`, `task` | Structured git output, multi-framework test runner (Jest/Vitest/pytest/cargo/swift/go), persistent task planning |
+
+### Key Features
+
+- **Tree-sitter parsing** — 15+ languages, incremental re-indexing
+- **Semantic code search** — local embeddings via HuggingFace transformers + HNSW vector index
+- **LSP integration** — TypeScript, Python, Go, Rust — hover, references, rename, diagnostics
+- **Cascading edit matching** — 6 strategies (exact → whitespace → indentation → escape → unicode → block-anchor) so agents don't fail on whitespace differences
+- **Zero OpenClaw dependency** — core tools are pure TypeScript functions
+
+## Installation
+
+### As an OpenClaw Plugin
 
 ```bash
-# 1. Install prerequisites
-brew install ripgrep                                    # required for grep/search
-npm i -g typescript-language-server typescript           # optional: TypeScript LSP
-
-# 2. Run setup (downloads embedding model, checks prerequisites)
-openclaw dev-tools setup
-
-# 3. Initialize for a workspace (indexes code, builds embeddings)
-cd ~/your-project
-openclaw dev-tools init
+openclaw plugin add @jaksm/dev-tools
 ```
 
-## Tools
+The plugin auto-registers all tools, analyzes your workspace on session start, and injects context (languages detected, symbol count, test runners) into agent prompts.
 
-### Foundation (7)
+### As a Standalone Package
 
-| Tool | Purpose |
-|---|---|
-| `file_read` | Read files with line numbers, pagination, binary detection |
-| `file_write` | Create/overwrite files, auto-create directories |
-| `file_edit` | Search-and-replace with flexible matching, multiple edits per call |
-| `shell` | Execute commands with safety guards (blocked interactive/dangerous commands) |
-| `grep` | Fast regex search via ripgrep, .gitignore-aware |
-| `glob` | Find files by pattern, sorted by modification time |
-| `ls` | Directory tree with sizes and child counts |
+```bash
+npm install @jaksm/dev-tools
+```
 
-### Intelligence (6)
+## Usage
 
-| Tool | Purpose |
-|---|---|
-| `code_outline` | Hierarchical symbol view: classes → methods → nested structure |
-| `code_read` | Read specific symbol's source code by name |
-| `code_search` | Semantic search by meaning ("auth middleware") or text, plus index browsing |
-| `code_inspect` | Type info + definition + all references via LSP (falls back to symbol index) |
-| `code_diagnose` | LSP errors/warnings, engine health, server status |
-| `code_refactor` | Cross-workspace rename, organize imports, apply quick-fixes |
+### OpenClaw Plugin (zero config)
 
-### Workflow (3)
+Install and it works. Tools appear automatically in your agent's tool list. The plugin handles workspace analysis, symbol indexing, and LSP lifecycle.
 
-| Tool | Purpose |
-|---|---|
-| `task` | Plan/track multi-step work: 8 actions (plan, status, update, add, replan, checkpoint, export, list) |
-| `git` | Structured git: status, diff, commit, log, branch — JSON output |
-| `test` | Run tests with structured results: 6 frameworks (Jest, Vitest, pytest, cargo, swift, go) |
+### Standalone — Direct Tool Import
+
+```typescript
+import { DevToolsCore } from '@jaksm/dev-tools/core'
+import { fileRead, grep, codeSearch, codeOutline } from '@jaksm/dev-tools/tools'
+
+// 1. Create core instance (manages indexing, LSP, embeddings)
+const core = new DevToolsCore({ logger: console })
+
+// 2. Analyze workspace (detects languages, test runners, parses symbols)
+const workspace = await core.analyzeWorkspace('/path/to/project')
+
+// 3. Create tool context
+const ctx = core.createToolContext('/path/to/project', workspace!)
+
+// 4. Use tools directly
+const file = await fileRead({ path: 'src/index.ts' }, ctx)
+const results = await grep({ pattern: 'TODO', mode: 'content' }, ctx)
+
+// 5. Use code intelligence (needs symbol index)
+const symbolIndex = core.getSymbolIndex('/path/to/project')
+const outline = await codeOutline({ path: 'src/' }, ctx, symbolIndex)
+
+// 6. Semantic search (needs embedding indexer — initialized automatically)
+const embeddingIndexer = core.getEmbeddingIndexer('/path/to/project')
+const search = await codeSearch(
+  { query: 'authentication logic', mode: 'semantic' },
+  ctx, symbolIndex, embeddingIndexer
+)
+
+// 7. Cleanup when done
+await core.dispose()
+```
+
+### Standalone — With Any Agent Framework
+
+The tools are plain async functions. Wire them into any framework's tool system:
+
+```typescript
+// Example: Mastra / Vercel AI SDK style
+import { fileRead, grep, codeSearch } from '@jaksm/dev-tools/tools'
+import { DevToolsCore } from '@jaksm/dev-tools/core'
+
+const core = new DevToolsCore({ logger: console })
+const workspace = await core.analyzeWorkspace(projectDir)
+const ctx = core.createToolContext(projectDir, workspace!)
+const symbolIndex = core.getSymbolIndex(projectDir)
+
+// Register as agent tools
+const tools = {
+  file_read: {
+    description: 'Read file contents with line numbers',
+    parameters: { path: 'string', offset: 'number?', limit: 'number?' },
+    execute: (params) => fileRead(params, ctx),
+  },
+  grep: {
+    description: 'Search file contents with ripgrep',
+    parameters: { pattern: 'string', path: 'string?', glob: 'string?' },
+    execute: (params) => grep(params, ctx),
+  },
+  code_search: {
+    description: 'Semantic code search',
+    parameters: { query: 'string', mode: 'string?' },
+    execute: (params) => codeSearch(params, ctx, symbolIndex, core.getEmbeddingIndexer(projectDir)),
+  },
+}
+```
+
+## Tool Reference
+
+### Foundation Tools
+
+#### `fileRead(params, ctx)`
+Read files with line numbers, pagination, binary detection, and "did you mean?" suggestions for wrong paths.
+
+#### `fileWrite(params, ctx)`
+Create or overwrite files. Auto-creates parent directories.
+
+#### `fileEdit(params, ctx, lspOptions?)`
+Surgical text replacement with 6-strategy cascading match (handles whitespace/indentation differences). Optionally returns LSP diagnostics after edit.
+
+#### `grep(params, ctx)`
+Ripgrep wrapper. Modes: `content` (lines + context), `files` (paths only), `count` (per-file counts). Respects `.gitignore`.
+
+#### `glob(params, ctx)`
+Find files by pattern. Returns path, size, modification time. Respects `.gitignore`.
+
+#### `ls(params, ctx)`
+Directory tree with file sizes and child counts. Configurable depth.
+
+#### `shell(params, ctx)`
+Execute shell commands with timeout, blocklist, and dangerous pattern detection.
+
+#### `git(params, workspaceDir)`
+Structured git output — status, diff (with hunks), commit, log, branch. No output parsing needed.
+
+#### `test(params, runner, workspaceDir)`
+Multi-framework test runner with structured results. Supports: Jest, Vitest, pytest, cargo test, swift test, go test.
+
+### Code Intelligence Tools
+
+#### `codeOutline(params, ctx, symbolIndex)`
+File/directory structure — classes, functions, methods with signatures and line numbers.
+
+#### `codeRead(params, ctx, symbolIndex)`
+Read a specific symbol's source code by name. Context modes: `siblings`, `class`, `dependencies`.
+
+#### `codeSearch(params, ctx, symbolIndex, embeddingIndexer)`
+Semantic search by concept ("authentication logic") or text. Also: `stats` (index info), `index` (browse symbols).
+
+#### `codeInspect(params, ctx, symbolIndex, lspManager)`
+Type signature + definition + references in one call. LSP-powered with index fallback.
+
+#### `codeDiagnose(params, ctx, symbolIndex, lspManager)`
+Compiler errors, warnings, quick-fixes. Actions: `diagnostics`, `health`, `lsp_status`, `reload`.
+
+#### `codeRefactor(params, ctx, symbolIndex, lspManager)`
+LSP-powered rename, organize imports, apply quick-fix. All filesystem changes applied automatically.
+
+### Workflow Tools
+
+#### `task(params, storage)`
+Persistent task planning with hierarchical subtasks, checkpoints, and progress tracking.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│           OpenClaw Agent Session         │
-│  ┌────────────────────────────────────┐  │
-│  │     dev-tools plugin (adapter)     │  │
-│  │  ┌──────────────────────────────┐  │  │
-│  │  │   DevToolsCore (pure TS)     │  │  │
-│  │  │  ┌────────┐  ┌───────────┐  │  │  │
-│  │  │  │  Tools  │  │  Engines  │  │  │  │
-│  │  │  │ 16 impl │  │ tree-sit  │  │  │  │
-│  │  │  │         │  │ HNSW+emb  │  │  │  │
-│  │  │  │         │  │ LSP mgr   │  │  │  │
-│  │  │  └────────┘  └───────────┘  │  │  │
-│  │  └──────────────────────────────┘  │  │
-│  └────────────────────────────────────┘  │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-         ~/.dev-tools/{project-slug}/
-         ├── index/          ← symbol index, embeddings, INDEX.json
-         ├── plans/          ← task plans (active + completed)
-         ├── logs/           ← tool call JSONL logs
-         └── tool-output/    ← truncated output spillover
+@jaksm/dev-tools
+├── src/
+│   ├── index.ts          # OpenClaw plugin adapter (thin boundary)
+│   ├── core/             # Pure TypeScript core (zero OC deps)
+│   │   ├── index.ts      # DevToolsCore class
+│   │   ├── types.ts      # All type definitions
+│   │   ├── tree-sitter/  # Multi-language parsing engine
+│   │   ├── index/        # Symbol index, workspace indexer, import graph
+│   │   ├── search/       # Embedding provider + HNSW vector index
+│   │   ├── lsp/          # Language Server Protocol manager
+│   │   └── task/         # Task storage and plan management
+│   └── tools/            # Individual tool implementations
+│       ├── index.ts      # Barrel export (import from '@jaksm/dev-tools/tools')
+│       ├── file-read.ts
+│       ├── code-search.ts
+│       └── ...
 ```
 
-**Core has zero OpenClaw dependencies.** The adapter layer maps OC's plugin API to the pure-TS core. This makes the core testable, portable, and reusable outside OpenClaw.
-
-## SKILL.md Variants
-
-Three skill files for different setups:
-
-| File | For | Description |
-|---|---|---|
-| `SKILL.md` | Solo agents, general use | Full tool guide with selection patterns, editing workflow, self-verification |
-| `SKILL-developer.md` | Developer (tech lead) agents | Adds master planning, worktree dispatch, review/merge protocol, checkpoint management |
-| `SKILL-subagent.md` | Sub-agents in multi-agent setup | Focused execution: explore → implement → test → verify → export |
-
-Assign via OpenClaw tool policy. The tools work identically regardless of which skill is loaded.
+The adapter layer (`src/index.ts`) maps OpenClaw's plugin API to the pure TS core. If you're not using OpenClaw, import from `/tools` and `/core` directly — zero adapter overhead.
 
 ## Configuration
 
-In `openclaw.json`:
+When used as an OpenClaw plugin, configure via `openclaw.plugin.json` or plugin config:
 
 ```json
 {
-  "plugins": {
-    "entries": {
-      "dev-tools": {
-        "enabled": true,
-        "config": {
-          "projectRoots": ["~/Projects/myapp"],
-          "search": {
-            "provider": "local",
-            "model": "Xenova/all-MiniLM-L6-v2"
-          },
-          "lsp": {
-            "maxRestartAttempts": 3,
-            "debug": false
-          },
-          "shell": {
-            "defaultTimeout": 120000
-          },
-          "tokenBudget": {
-            "maxResponseTokens": 4000
-          }
-        }
-      }
+  "search": {
+    "provider": "local",
+    "reindexDebounceMs": 5000
+  },
+  "lsp": {
+    "servers": {
+      "typescript": { "enabled": true },
+      "python": { "enabled": true }
     }
+  },
+  "tokenBudget": {
+    "maxResponseTokens": 50000
   }
 }
 ```
 
-Or via environment variables: `DEV_TOOLS_SEARCH_PROVIDER`, `DEV_TOOLS_SHELL_TIMEOUT`, `DEV_TOOLS_LSP_DEBUG`, etc.
+When used standalone, pass config to `DevToolsCore`:
 
-## Supported Languages
-
-| Language | Tree-sitter | Semantic Search | LSP Server |
-|---|---|---|---|
-| TypeScript/TSX | ✅ | ✅ | `typescript-language-server` |
-| JavaScript/JSX | ✅ | ✅ | `typescript-language-server` |
-| Python | ✅ | ✅ | `pyright-langserver` |
-| Rust | ✅ | ✅ | `rust-analyzer` |
-| Go | ✅ | ✅ | `gopls` |
-| Swift | ✅ | ✅ | `sourcekit-lsp` |
-| Java | ✅ | ✅ | — |
-| Kotlin | ✅ | ✅ | — |
-| C# | ✅ | ✅ | — |
-| JSON, HTML, CSS, Bash | ✅ | — | — |
-
-Tree-sitter provides symbol extraction and code intelligence for all listed languages. LSP adds type information, references, and refactoring for languages with configured servers.
-
-## Development
-
-```bash
-# Run tests (907+ tests across 57 files)
-npx vitest run
-
-# Type check
-npx tsc --noEmit
-
-# Watch mode
-npx vitest
+```typescript
+const core = new DevToolsCore({
+  config: {
+    search: { provider: 'local' },
+    lsp: { servers: { typescript: { enabled: true } } },
+  },
+  logger: console,
+})
 ```
 
-## Documentation
+## Requirements
 
-Detailed docs in `docs/`:
-
-- [Architecture](docs/architecture.md) — plugin structure, storage layout, engine overview
-- [Tools Reference](docs/tools.md) — all 16 tools with params, behavior, output
-- [Configuration](docs/configuration.md) — config schema, env vars, defaults
-- [Engines](docs/engines.md) — tree-sitter, symbol index, HNSW, LSP
-- [Lifecycle](docs/lifecycle.md) — session hooks, auto-activation, project registry
-- [Languages](docs/languages.md) — supported languages, detection, LSP servers
+- Node.js >= 20
+- For LSP tools: language servers must be installed (`typescript-language-server`, `pyright`, etc.)
+- For semantic search: runs local embeddings via `@huggingface/transformers` (no API key needed)
 
 ## License
 

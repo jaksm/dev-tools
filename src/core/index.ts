@@ -30,7 +30,7 @@ import { ImportGraph } from "./index/import-graph.js";
 import { FileWatcher } from "./index/watcher.js";
 import { generateIndexJson, writeIndexJson, type IndexJson } from "./index/index-json.js";
 import { renderIndexWithBudget } from "./index/index-renderer.js";
-import { generateAgentsMd, writeAgentsMd, readAgentsMd } from "./agents-md.js";
+import { generateAgentsMd, writeAgentsMd } from "./agents-md.js";
 
 // Phase 3 imports
 import { createEmbeddingProvider, type EmbeddingProvider } from "./search/embeddings.js";
@@ -735,4 +735,21 @@ export class DevToolsCore {
     this.lspManagers.clear();
     this.lspResolvers.clear();
   }
+
+
 }
+
+// ── Re-exports for standalone usage ──────────────────────────────────────────
+
+export type {
+  DevToolsConfig,
+  Logger,
+  ToolContext,
+  ToolResult,
+  WorkspaceInfo,
+  LanguageInfo,
+  TestRunner,
+  SymbolInfo,
+  SymbolKind,
+  StorageManager,
+} from "./types.js";

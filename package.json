@@ -1,20 +1,62 @@
 {
-  "name": "@openclaw/dev-tools",
+  "name": "@jaksm/dev-tools",
   "version": "0.1.0",
-  "private": true,
-  "description": "IDE-grade coding tools for AI agents — foundation tools, code intelligence, workflow automation.",
+  "description": "IDE-grade coding tools for AI agents — foundation tools, code intelligence, workflow automation. Use as an OpenClaw plugin or import tools directly into any agent framework.",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "import": "./dist/tools/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    }
+  },
   "openclaw": {
     "extensions": [
       "./dist/index.js"
     ]
   },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai-agent",
+    "coding-tools",
+    "openclaw",
+    "code-intelligence",
+    "tree-sitter",
+    "lsp",
+    "semantic-search",
+    "developer-tools"
+  ],
+  "author": "Jakša Mališić <jaksa.malisic@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaksm/dev-tools.git"
+  },
+  "homepage": "https://github.com/jaksm/dev-tools#readme",
+  "bugs": {
+    "url": "https://github.com/jaksm/dev-tools/issues"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
@@ -32,5 +74,8 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
