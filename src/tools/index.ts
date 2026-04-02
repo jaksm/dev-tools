@@ -36,3 +36,12 @@ export { codeRefactor, type CodeRefactorParams, type CodeRefactorResult, type Fi
 // ── Workflow Tools ───────────────────────────────────────────────────────────
 
 export { task, type TaskParams } from "./task.js";
+
+// ── Tool Metadata ────────────────────────────────────────────────────────────
+
+export {
+  toolMetadata,
+  allToolMetadata,
+  type ToolMetadataEntry,
+  type ToolId,
+} from "./metadata.js";
